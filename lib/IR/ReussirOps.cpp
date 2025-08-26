@@ -71,18 +71,56 @@ mlir::LogicalResult ReussirRcIncOp::verify() {
 
   return mlir::success();
 }
+
+//===----------------------------------------------------------------------===//
+// RcReinterpretOp verification
+//===----------------------------------------------------------------------===//
+mlir::LogicalResult ReussirRcReinterpretOp::verify() {
+  RcType rcType = getRcPtr().getType();
+  TokenType tokenType = getReinterpreted().getType();
+
+  // Get the RC box type for the RC pointer
+  RcBoxType rcBoxType = rcType.getInnerBoxType();
+
+  // Get the data layout to compute alignment and size
+  auto dataLayout = mlir::DataLayout::closest(getOperation());
+  auto alignment = dataLayout.getTypeABIAlignment(rcBoxType);
+  auto size = dataLayout.getTypeSize(rcBoxType);
+
+  if (!size.isFixed())
+    return emitOpError("RC box type must have a fixed size");
+
+  // Check that token alignment matches RC box alignment
+  if (tokenType.getAlign() != alignment)
+    return emitOpError("token alignment must match RC box alignment, ")
+           << "token alignment: " << tokenType.getAlign()
+           << ", RC box alignment: " << alignment;
+
+  // Check that token size matches RC box size
+  if (tokenType.getSize() != size)
+    return emitOpError("token size must match RC box size, ")
+           << "token size: " << tokenType.getSize()
+           << ", RC box size: " << size.getFixedValue();
+
+  return mlir::success();
+}
 //===----------------------------------------------------------------------===//
 // RcDecOp verification
 //===----------------------------------------------------------------------===//
 mlir::LogicalResult ReussirRcDecOp::verify() {
   RcType RcType = getRcPtr().getType();
-  NullableType nullableType = getNullableToken().getType();
-  TokenType tokenType = llvm::dyn_cast<TokenType>(nullableType.getPtrTy());
-  if (!tokenType)
-    return emitOpError("nullable token must be of TokenType");
-  RcBoxType rcBoxType = RcType.getInnerBoxType();
   if (RcType.getCapability() == reussir::Capability::flex)
     return emitOpError("cannot decrease reference count of a flex RC type");
+  if (RcType.getCapability() == reussir::Capability::rigid) {
+    if (getNullableToken() != nullptr)
+      return emitOpError("rigid RC decrement cannot return a token");
+    return mlir::success();
+  }
+  NullableType nullableType = getNullableToken().getType();
+  TokenType tokenType = llvm::dyn_cast<TokenType>(nullableType.getPtrTy());
+  RcBoxType rcBoxType = RcType.getInnerBoxType();
+  if (!tokenType)
+    return emitOpError("nullable token must be of TokenType");
   auto dataLayout = mlir::DataLayout::closest(getOperation());
   auto alignment = dataLayout.getTypeABIAlignment(rcBoxType);
   auto size = dataLayout.getTypeSize(rcBoxType);
@@ -145,9 +183,12 @@ mlir::LogicalResult ReussirRcCreateOp::verify() {
 mlir::LogicalResult ReussirRcBorrowOp::verify() {
   RcType rcType = getRcPtr().getType();
   RefType refType = getBorrowed().getType();
-  if (refType.getCapability() != rcType.getCapability())
-    return emitOpError(
-               "borrowed type capability must match RC type capability, ")
+
+  // Allow unspecified capability or matching capability
+  if (refType.getCapability() != reussir::Capability::unspecified &&
+      refType.getCapability() != rcType.getCapability())
+    return emitOpError("borrowed type capability must be unspecified or match "
+                       "RC type capability, ")
            << "borrowed type capability: "
            << stringifyCapability(refType.getCapability())
            << ", RC type capability: "
@@ -1259,6 +1300,45 @@ mlir::LogicalResult ReussirClosureEvalOp::verify() {
     if (closureOutputType)
       return emitOpError("closure has output type ")
              << closureOutputType << " but result is empty";
+  }
+
+  return mlir::success();
+}
+
+//===----------------------------------------------------------------------===//
+// Reussir Reference Drop Op
+//===----------------------------------------------------------------------===//
+// RefDropOp verification
+//===----------------------------------------------------------------------===//
+mlir::LogicalResult ReussirRefDropOp::verify() {
+  RefType refType = getRef().getType();
+  mlir::Type elementType = refType.getElementType();
+
+  // Check if variant attribute is specified
+  if (auto variantAttr = getVariant()) {
+    // When variant is specified, the inner element must be a variant record
+    // type
+    RecordType recordType = llvm::dyn_cast<RecordType>(elementType);
+    if (!recordType)
+      return emitOpError("when variant is specified, reference element type "
+                         "must be a record type, got: ")
+             << elementType;
+
+    // Check that the record is a variant record
+    if (!recordType.isVariant())
+      return emitOpError("when variant is specified, reference element type "
+                         "must be a variant record type");
+
+    // Check that the record is complete
+    if (!recordType.getComplete())
+      return emitOpError("cannot drop incomplete variant record");
+
+    // Check that the index is inbound
+    size_t variantIndex = variantAttr->getZExtValue();
+    size_t numVariants = recordType.getMembers().size();
+    if (variantIndex >= numVariants)
+      return emitOpError("variant index out of bounds: ")
+             << variantIndex << " >= " << numVariants;
   }
 
   return mlir::success();

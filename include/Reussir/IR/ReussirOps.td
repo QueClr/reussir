@@ -268,22 +268,47 @@ def ReussirRcDecOp : ReussirRcOp<"dec", []> {
   let summary = "Decrement reference count";
   let description = [{
     `reussir.rc.dec` decrements the reference count of a RC pointer.
-    If the reference count reaches zero, the memory will be freed.
+    If the reference count reaches zero, the memory will not be freed immediately.
+    Rather, a nullable token is returned.
     ```mlir
     %nullable = reussir.rc.dec (%rc_ptr : !reussir.rc<i64>) -> 
       !reussir.nullable<!reussir.token<align: 8, size: 8>>
     ```
+
+    For rigid RC pointer, this operation is basically a function call to
+    __reussir_release_rigid_object. There is no token shall be returned.
   }];
 
-  let arguments = (ins Arg<ReussirRcType, "Reference to decrement">:$rcPtr);
+  let arguments = (
+    ins Arg<ReussirRcType, "Reference to decrement">:$rcPtr
+  );
   let results =
-      (outs Res<ReussirNullableTokenType, "Nullable tokeno">:$nullableToken);
+      (outs Res<Optional<ReussirNullableTokenType>, "Nullable token">:$nullableToken);
 
   let assemblyFormat = [{
-    `(` $rcPtr `:` qualified(type($rcPtr)) `)` `:` type($nullableToken) attr-dict
+    `(` $rcPtr `:` qualified(type($rcPtr)) `)` 
+    (`:` type($nullableToken)^)? 
+    attr-dict
   }];
 
   let hasVerifier = 1;
+}
+
+def ReussirRcFetchDecOp : ReussirRcOp<"fetch_dec", []> {
+  let summary = "Fetch and decrement a RC pointer";
+  let description = [{
+    `reussir.rc.fetch_dec` fetches a decrement operation from a RC pointer.
+
+    This serves as a low-level operation to implement the `reussir.rc.dec` operation.
+    It is not recommended to use this operation directly.
+  }];
+
+  let arguments = (ins Arg<ReussirRcType, "Reference to fetch and decrement">:$rcPtr);
+  let results = (outs Res<Index, "Reference count">:$refCount);
+
+  let assemblyFormat = [{
+    `(` $rcPtr `:` qualified(type($rcPtr)) `)` `:` type($refCount) attr-dict
+  }];
 }
 
 def ReussirRcCreateOp : ReussirRcOp<"create", []> {
@@ -338,6 +363,23 @@ def ReussirRcCreateOp : ReussirRcOp<"create", []> {
   let hasVerifier = 1;
 }
 
+def ReussirRcReinterpretOp : ReussirRcOp<"reinterpret", []> {
+  let summary = "Reinterpret a Rc pointer into a token";
+  let description = [{
+    `reussir.rc.reinterpret` reinterprets a Rc pointer into a token.
+
+    The token layout must meet the underlying Rc box layout.
+  }];
+
+  let results =
+      (outs Res<ReussirTokenType, "reinterpreted token">:$reinterpreted);
+  let arguments = (ins Arg<ReussirRcType, "Rc pointer to reinterpret">:$rcPtr);
+  let assemblyFormat = [{
+    `(` $rcPtr `:` qualified(type($rcPtr)) `)` `:` qualified(type($reinterpreted)) attr-dict
+  }];
+  let hasVerifier = 1;
+}
+
 //===----------------------------------------------------------------------===//
 // Reussir RC Borrow Operation
 //===----------------------------------------------------------------------===//
@@ -346,8 +388,8 @@ def ReussirRcBorrowOp : ReussirRcOp<"borrow", []> {
   let description = [{
     `reussir.rc.borrow` borrows a RC pointer, which gives you an access reference 
     to the underlying value. The shared/flex/rigid capability from Rc will be inherited
-    by the borrowed reference. The borrow will not change the reference count of 
-    the RC pointer.
+    by the borrowed reference. Additionally, the result reference can be of unspecified
+    capability. The borrow will not change the reference count of the RC pointer.
     ```mlir
     %token = reussir.token.alloc : !reussir.token<align: 8, size: 8>
     %rc_ptr = reussir.rc.create 
@@ -588,15 +630,33 @@ def ReussirRefDropOp : ReussirReferenceOp<"drop", []> {
 
     If the reference if of flex capability, the drop operation will skip the destruction
     of elements with field capability.
+
+    When variant is specified, the inner element must be a variant record type and
+    the index must be inbound.
   }];
   let arguments = (
-    ins Arg<ReussirRefType, "reference to drop">:$ref
+    ins Arg<ReussirRefType, "reference to drop">:$ref,
+    UnitAttr:$inlined,
+    OptionalAttr<IndexAttr>:$variant 
   );
 
   let assemblyFormat = [{
     `(` $ref `:` qualified(type($ref)) `)` 
+    oilist (
+      `inlined` $inlined  | 
+      `variant` `[` $variant `]`
+    )
     attr-dict
   }];
+
+  let builders = [
+    OpBuilder<(ins "mlir::Value":$ref),
+    [{
+      return build($_builder, $_state, ref, false, nullptr);
+    }]>
+  ];
+
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//

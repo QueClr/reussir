@@ -20,6 +20,7 @@
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
 #include "Reussir/Conversion/DropExpansion.h"
+#include "Reussir/Conversion/RcDecrementExpansion.h"
 #include "Reussir/IR/ReussirDialect.h"
 #include "Reussir/IR/ReussirEnumAttrs.h"
 #include "Reussir/IR/ReussirOps.h"
@@ -41,12 +42,15 @@ private:
   mlir::LogicalResult rewriteDropRc(RcType rcType, ReussirRefDropOp op,
                                     mlir::PatternRewriter &rewriter) const {
     // Replace drop of ref rc with load then dec
-    auto layout = mlir::DataLayout::closest(op.getOperation());
-    RcBoxType rcBoxType = rcType.getInnerBoxType();
-    size_t size = layout.getTypeSize(rcBoxType).getFixedValue();
-    size_t align = layout.getTypeABIAlignment(rcBoxType);
-    TokenType tokenType = TokenType::get(op.getContext(), align, size);
-    NullableType nullableType = NullableType::get(op.getContext(), tokenType);
+    NullableType nullableType = nullptr;
+    if (rcType.getCapability() != Capability::rigid) {
+      auto layout = mlir::DataLayout::closest(op.getOperation());
+      RcBoxType rcBoxType = rcType.getInnerBoxType();
+      size_t size = layout.getTypeSize(rcBoxType).getFixedValue();
+      size_t align = layout.getTypeABIAlignment(rcBoxType);
+      TokenType tokenType = TokenType::get(op.getContext(), align, size);
+      nullableType = NullableType::get(op.getContext(), tokenType);
+    }
     mlir::Value loaded =
         rewriter.create<ReussirRefLoadOp>(op.getLoc(), rcType, op.getRef());
     rewriter.create<ReussirRcDecOp>(op.getLoc(), nullableType, loaded);
@@ -101,10 +105,25 @@ private:
       rewriter.setInsertionPointToStart(block);
       if ((memberCap != Capability::field || refCap != Capability::flex) &&
           !isTriviallyCopyable(projectedTy))
-        rewriter.create<ReussirRefDropOp>(op.getLoc(), block->getArgument(0));
+        rewriter.create<ReussirRefDropOp>(op.getLoc(), block->getArgument(0),
+                                          true, nullptr);
 
       rewriter.create<ReussirScfYieldOp>(op.getLoc(), nullptr);
     }
+    rewriter.eraseOp(op);
+    return mlir::success();
+  }
+
+  mlir::LogicalResult
+  rewriteDropVariant(RecordType recordType, size_t tag, Capability refCap,
+                     ReussirRefDropOp op,
+                     mlir::PatternRewriter &rewriter) const {
+    assert(recordType.isVariant());
+    auto targetType = recordType.getMembers()[tag];
+    auto targetRefType = rewriter.getType<RefType>(targetType, refCap);
+    auto targetRef = rewriter.create<ReussirRecordCoerceOp>(
+        op.getLoc(), targetRefType, rewriter.getIndexAttr(tag), op.getRef());
+    rewriter.create<ReussirRefDropOp>(op.getLoc(), targetRef);
     rewriter.eraseOp(op);
     return mlir::success();
   }
@@ -128,13 +147,15 @@ private:
           &dispatcher.getNonNullRegion(), dispatcher.getNonNullRegion().begin(),
           {nullableType.getPtrTy()}, {op.getLoc()});
       rewriter.setInsertionPointToStart(nonNullBlock);
-      auto layout = mlir::DataLayout::closest(op.getOperation());
-      RcBoxType rcBoxType = rcType.getInnerBoxType();
-      size_t size = layout.getTypeSize(rcBoxType).getFixedValue();
-      size_t align = layout.getTypeABIAlignment(rcBoxType);
-      TokenType tokenType = TokenType::get(op.getContext(), align, size);
-      NullableType retNullableTy =
-          NullableType::get(op.getContext(), tokenType);
+      NullableType retNullableTy = nullptr;
+      if (rcType.getCapability() != Capability::rigid) {
+        auto layout = mlir::DataLayout::closest(op.getOperation());
+        RcBoxType rcBoxType = rcType.getInnerBoxType();
+        size_t size = layout.getTypeSize(rcBoxType).getFixedValue();
+        size_t align = layout.getTypeABIAlignment(rcBoxType);
+        TokenType tokenType = TokenType::get(op.getContext(), align, size);
+        retNullableTy = NullableType::get(op.getContext(), tokenType);
+      }
       rewriter.create<ReussirRcDecOp>(op.getLoc(), retNullableTy,
                                       nonNullBlock->getArgument(0));
       rewriter.create<ReussirScfYieldOp>(op.getLoc(), nullptr);
@@ -143,8 +164,53 @@ private:
     return mlir::success();
   }
 
+  mlir::func::FuncOp createDtorIfNotExists(mlir::ModuleOp moduleOp,
+                                           RecordType type,
+                                           mlir::OpBuilder &builder) const {
+    mlir::SymbolTable symTable(moduleOp);
+    auto dtorName = type.getDtorName();
+    if (!dtorName)
+      llvm::report_fatal_error("only named record types have destructors");
+    if (auto funcOp = symTable.lookup<mlir::func::FuncOp>(dtorName.getValue()))
+      return funcOp;
+    mlir::OpBuilder::InsertionGuard guard(builder);
+    builder.setInsertionPointToStart(moduleOp.getBody());
+    RefType refType = builder.getType<RefType>(type);
+    auto dtor = builder.create<mlir::func::FuncOp>(
+        builder.getUnknownLoc(), dtorName.getValue(),
+        builder.getFunctionType({refType}, {}));
+    dtor.setPrivate();
+    dtor->setAttr("llvm.linkage",
+                  builder.getAttr<mlir::LLVM::LinkageAttr>(
+                      mlir::LLVM::linkage::Linkage::LinkonceODR));
+    mlir::Block *entryBlock = dtor.addEntryBlock();
+    builder.setInsertionPointToStart(entryBlock);
+    auto ref = entryBlock->getArgument(0);
+    builder.create<ReussirRefDropOp>(builder.getUnknownLoc(), ref, true,
+                                     nullptr);
+    builder.create<mlir::func::ReturnOp>(builder.getUnknownLoc());
+    return dtor;
+  }
+
+  bool outlineRecord;
+
+  bool shouldOutline(ReussirRefDropOp op, RecordType type) const {
+    if (!outlineRecord)
+      return false;
+
+    if (isTriviallyCopyable(type))
+      return false;
+
+    if (op.getInlined())
+      return false;
+
+    return type.getName() != nullptr;
+  }
+
 public:
-  using mlir::OpRewritePattern<ReussirRefDropOp>::OpRewritePattern;
+  DropExpansionPattern(mlir::MLIRContext *context, bool outlineRecord)
+      : mlir::OpRewritePattern<ReussirRefDropOp>(context),
+        outlineRecord(outlineRecord) {}
 
   mlir::LogicalResult
   matchAndRewrite(ReussirRefDropOp op,
@@ -162,8 +228,20 @@ public:
         .Case<RcType>(
             [&](RcType rcType) { return rewriteDropRc(rcType, op, rewriter); })
         .Case<RecordType>([&](RecordType recordType) {
+          if (shouldOutline(op, recordType)) {
+            mlir::ModuleOp moduleOp = op->getParentOfType<mlir::ModuleOp>();
+            mlir::func::FuncOp dtor =
+                createDtorIfNotExists(moduleOp, recordType, rewriter);
+            rewriter.create<mlir::func::CallOp>(op.getLoc(), dtor, op.getRef());
+            rewriter.eraseOp(op);
+            return llvm::success();
+          }
           if (recordType.isCompound())
             return rewriteDropCompound(recordType, refCap, op, rewriter);
+          if (op.getVariant())
+            return rewriteDropVariant(recordType,
+                                      op.getVariant()->getZExtValue(), refCap,
+                                      op, rewriter);
           return rewriteDropVariant(recordType, refCap, op, rewriter);
         })
         .Case<NullableType>([&](NullableType nullableType) {
@@ -186,8 +264,9 @@ struct DropExpansionPass
     mlir::ConversionTarget target(getContext());
     mlir::RewritePatternSet patterns(&getContext());
 
-    populateDropExpansionConversionPatterns(patterns);
-
+    populateDropExpansionConversionPatterns(patterns, outlineRecord);
+    if (expandDecrement)
+      populateRcDecrementExpansionConversionPatterns(patterns);
     if (failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns))))
       signalPassFailure();
@@ -195,9 +274,9 @@ struct DropExpansionPass
 };
 } // namespace
 
-void populateDropExpansionConversionPatterns(
-    mlir::RewritePatternSet &patterns) {
-  patterns.add<DropExpansionPattern>(patterns.getContext());
+void populateDropExpansionConversionPatterns(mlir::RewritePatternSet &patterns,
+                                             bool outlineRecord) {
+  patterns.add<DropExpansionPattern>(patterns.getContext(), outlineRecord);
 }
 
 } // namespace reussir

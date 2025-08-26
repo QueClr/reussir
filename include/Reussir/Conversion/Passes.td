@@ -73,7 +73,40 @@ def ReussirDropExpansionPass
     this pass. After the expansion, the optimizer has chances to fuse increment
     and decrement operations. Eventually, remaining drop operations expanded from
     decrement operations will be outlined to avoid recursive inlining.
+
+    To also expand rc decrement operations, use `expand-decrement` option. When
+    enabled, conversion patterns from `rc-decrement-expansion` will also be applied
+    in the greedy matching process.
+
+    If you have recursive types, if `expand-decrement` is enabled, the pass may
+    not terminate as dec-drop will be expanded infinitely. To avoid this, you
+    should enable `outline-record` option, which converts record destructions to
+    outline function calls.
   }];
+  let options = [
+    Option<"outlineRecord", "outline-record", "bool", /*default=*/"false",
+        "whether to outline record destruction">,
+    Option<"expandDecrement", "expand-decrement", "bool", /*default=*/"false",
+        "whether to expand rc decrement operations (using the `rc-decrement-expansion` pass)">,   
+  ];
   let dependentDialects = ["::reussir::ReussirDialect"];
 }
+
+//===----------------------------------------------------------------------===//
+// RcDecrementExpansion
+//===----------------------------------------------------------------------===//
+def ReussirRcDecrementExpansionPass
+    : Pass<"reussir-rc-decrement-expansion"> {
+  let summary = "expand Reussir rc decrement operations";
+  let description = [{
+    `reussir-rc-decrement-expansion` expands Reussir rc decrement operations.
+    This is separated from scf expansion pass as it may be used in early stages
+    of the pipeline.
+  }];
+
+  let dependentDialects = ["::reussir::ReussirDialect", 
+                           "::mlir::arith::ArithDialect", 
+                           "::mlir::scf::SCFDialect"];
+}
+
 #endif // REUSSIR_CONVERSION_PASSES_TD
