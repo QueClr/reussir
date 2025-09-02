@@ -1,5 +1,5 @@
-add_mlir_conversion_library(MLIRReussirInferVariantTag
-  InferVariantTag.cpp
+add_mlir_conversion_library(MLIRReussirIncDecCancellation
+  IncDecCancellation.cpp
 
   DEPENDS
   MLIRReussirConversionPassIncGen
