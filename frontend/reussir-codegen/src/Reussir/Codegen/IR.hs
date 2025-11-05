@@ -384,7 +384,8 @@ funcCallCodegen :: FuncCall -> Codegen ()
 funcCallCodegen (FuncCall target args result) = emitLine $ do
     argList <- mapM fmtTypedValue args
     for_ result $ emit . fst >=> emitBuilder . (<> " = ")
-    emitBuilder $ "func.call @" <> fromString (show target) <> "(" <> intercalate ", " argList <> ")"
+    let target' = manglePathWithPrefix target
+    emitBuilder $ "func.call @\"" <> target' <> "\"(" <> intercalate ", " argList <> ")"
     for_ result $ emit . snd >=> emitBuilder . (" -> " <>)
 
 nullableDispCodegen :: TypedValue -> Block -> Block -> Maybe TypedValue -> Codegen ()
