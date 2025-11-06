@@ -107,7 +107,7 @@ createSimpleModule =
                 "/tmp/output.o"
                 B.OptDefault
                 B.OutputObject
-                B.LogInfo
+                B.LogWarning
         , C.recordInstances = []
         }
 
@@ -148,7 +148,7 @@ createTensor2x2Module =
                 "/tmp/tensor.o"
                 B.OptAggressive
                 B.OutputObject
-                B.LogInfo
+                B.LogWarning
         , C.recordInstances =
             [ RecordInstance
                 ( tensor2x2Symbol
@@ -740,7 +740,7 @@ createFibonacciModule =
                 "/tmp/fibonacci.o"
                 B.OptAggressive
                 B.OutputObject
-                B.LogInfo
+                B.LogWarning
         , C.recordInstances = []
         }
 
@@ -780,7 +780,6 @@ codegenTests =
                 result <-
                     L.withStdOutLogger $ \logger -> do
                         E.runEff $ L.runLog "Test.Codegen" logger defaultLogLevel $ do
-                            E.liftIO $ putStrLn ""
                             C.emitModuleToBackend module'
                             pure True
                 assertBool "Should complete successfully" result
@@ -807,7 +806,6 @@ codegenTests =
                 result <-
                     L.withStdOutLogger $ \logger -> do
                         E.runEff $ L.runLog "Test.Codegen" logger defaultLogLevel $ do
-                            E.liftIO $ putStrLn ""
                             C.emitModuleToBackend module'
                             pure True
                 assertBool "Should complete successfully" result
@@ -831,7 +829,6 @@ codegenTests =
                 result <-
                     L.withStdOutLogger $ \logger -> do
                         E.runEff $ L.runLog "Test.Codegen" logger defaultLogLevel $ do
-                            E.liftIO $ putStrLn ""
                             C.emitModuleToBackend module'
                             pure True
                 assertBool "Should complete successfully" result
@@ -841,7 +838,6 @@ codegenTests =
                 _ <-
                     L.withStdOutLogger $ \logger -> do
                         E.runEff $ L.runLog "Test.Codegen" logger defaultLogLevel $ do
-                            E.liftIO $ putStrLn ""
                             C.emitModuleToBackend module'
                 -- Write the C file
                 let cSource = "extern double _Z13fibnacci_fast(unsigned long long);\nint main() {\n        double value = _Z13fibnacci_fast(42);\n        __builtin_printf(\"%.0f\\n\", value);\n        return 0;\n}\n"
