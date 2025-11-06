@@ -6,6 +6,7 @@ module Reussir.Codegen.Type.Emission (emitRecord) where
 import Data.Text.Builder.Linear qualified as TB
 import Reussir.Codegen.Context.Codegen
 import Reussir.Codegen.Context.Emission (Emission (emit), intercalate)
+import Reussir.Codegen.Context.Symbol (Symbol, symbolBuilder)
 import Reussir.Codegen.Type.Data (
     Atomicity (..),
     Capability (..),
@@ -18,7 +19,6 @@ import Reussir.Codegen.Type.Data (
     Type (..),
  )
 import Reussir.Codegen.Type.Record (Record (..), RecordField, RecordKind (..))
-import Reussir.Codegen.Context.Symbol (symbolBuilder, Symbol)
 
 instance Emission PrimitiveInt where
     emit PrimInt8 = pure "i8"
@@ -106,7 +106,7 @@ emitRecord
         , defaultCapability
         } = do
         -- Check if we should use guard (for recursive calls or already complete)
-        guard' <- if toplevel then pure Nothing else emitRecordGuard name
+        guard' <- emitRecordGuard name
         case guard' of
             Just finished -> pure finished
             Nothing -> do
@@ -123,9 +123,12 @@ emitRecord
             status <- getRecordEmissionState n
             case status of
                 RecordEmissionComplete -> pure $ Just $ "!" <> symbolBuilder n
-                RecordEmissionIncomplete -> do
-                    kind' <- emit kind
-                    pure $ Just $ "!reussir.record<" <> kind' <> " \"" <> symbolBuilder n <> "\">"
+                RecordEmissionIncomplete ->
+                    if toplevel
+                        then pure Nothing
+                        else do
+                            kind' <- emit kind
+                            pure $ Just $ "!reussir.record<" <> kind' <> " \"" <> symbolBuilder n <> "\">"
                 RecordEmissionPending -> pure Nothing
 
         translateCapability :: Capability -> TB.Builder
