@@ -507,7 +507,7 @@ refProjectCodegen val field (resVal, resTy) = emitBuilderLineM $ do
             <> resTy'
 
 refSpillCodegen :: TypedValue -> TypedValue -> Codegen ()
-refSpillCodegen = emitUnaryOp "reussir.ref.spill"
+refSpillCodegen = emitUnaryOp "reussir.ref.spilled"
 
 refLoadCodegen :: TypedValue -> TypedValue -> Codegen ()
 refLoadCodegen = emitUnaryOp "reussir.ref.load"
@@ -640,7 +640,7 @@ wrapLinkage builder = pure $ "#llvm.linkage<" <> builder <> ">"
 instance Emission Linkage where
     emit LnkInternal = wrapLinkage "internal"
     emit LnkPrivate = wrapLinkage "private"
-    emit LnkWeakODR = wrapLinkage "weakodr"
+    emit LnkWeakODR = wrapLinkage "weak_odr"
     emit LnkExternal = wrapLinkage "external"
     emit LnkLinkOnce = wrapLinkage "linkonce"
     emit LnkLinkOnceODR = wrapLinkage "linkonce_odr"
