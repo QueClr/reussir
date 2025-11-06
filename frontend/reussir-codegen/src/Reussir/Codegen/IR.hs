@@ -577,11 +577,11 @@ ifThenElseCodegen (condVal, _) thenBlock elseBlock result = do
     for_ result $ emit . fst >=> emitBuilder . (<> " = ")
     condVal' <- emit condVal
     emitBuilder $ "scf.if " <> condVal'
-    for_ result $ emit . snd >=> emitBuilder . (" -> " <>)
-    withoutLocation $ blockCodegen True thenBlock
+    for_ result $ emit . snd >=> emitBuilder . (" -> " <>) . (<> " ")
+    withoutLocation $ blockCodegen False thenBlock
     for_ elseBlock $ \blk -> withoutLocation $ do
         emitBuilder " else "
-        blockCodegen True blk
+        blockCodegen False blk
     emitLocIfPresent
     emitBuilder "\n"
 
@@ -657,7 +657,6 @@ instance Emission LLVMVisibility where
 
 functionCodegen :: Function -> Codegen ()
 functionCodegen function = do
-    emitIndentation
     linkage <- emit (funcLinkage function)
     visibility <- emit (funcLLVMVisibility function)
     let mlirVis = if funcMLIRVisibility function == MLIRVisPrivate then " private " else " "
@@ -671,6 +670,6 @@ functionCodegen function = do
         result' <- emit result
         emitBuilder $ " -> " <> result'
     emitBuilder $ " attributes { llvm.linkage = " <> linkage <> ", llvm.visibility = \"" <> visibility <> "\" }"
-    for_ (funcBody function) $ \body -> incIndentation $ blockCodegen False body
+    for_ (funcBody function) $ \body -> emitBuilder " " >> blockCodegen False body
     for_ (funcLoc function) $ \loc -> withLocation loc emitLocIfPresent
     emitBuilder "\n"
