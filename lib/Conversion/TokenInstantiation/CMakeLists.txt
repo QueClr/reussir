@@ -1,5 +1,5 @@
-add_mlir_conversion_library(MLIRReussirTokenAllocation
-  TokenAllocation.cpp
+add_mlir_conversion_library(MLIRReussirTokenInstantiation
+  TokenInstantiation.cpp
 
   DEPENDS
   MLIRReussirConversionPassIncGen

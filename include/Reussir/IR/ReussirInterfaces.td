@@ -89,4 +89,77 @@ def TokenAcceptorInterface : OpInterface<"TokenAcceptor"> {
   ];
 }
 
+//===----------------------------------------------------------------------===//
+// TokenProducer Interface
+//===----------------------------------------------------------------------===//
+
+def TokenProducerInterface : OpInterface<"TokenProducer"> {
+  let description = [{
+    Interface for operations that can generate tokens.
+    Operations implementing this interface support token production, including
+    nullable token production, and provide methods to query and create the
+    produced token values.
+  }];
+
+  let cppNamespace = "::reussir";
+
+  let methods = [
+    InterfaceMethod<
+      /*desc=*/"Check if the operation should produce a token.",
+      /*retTy=*/"bool",
+      /*methodName=*/"shouldProduceToken",
+      /*args=*/(ins),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/""
+    >,
+    InterfaceMethod<
+      /*desc=*/"Check if the operation's token production can be nullable.",
+      /*retTy=*/"bool",
+      /*methodName=*/"isNullable",
+      /*args=*/(ins),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/""
+    >,
+    InterfaceMethod<
+      /*desc=*/"Get the token type if shouldProduceToken, otherwise return null.",
+      /*retTy=*/"::reussir::TokenType",
+      /*methodName=*/"getTokenType",
+      /*args=*/(ins),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/""
+    >,
+    InterfaceMethod<
+      /*desc=*/"Get the actual produced type (e.g., Nullable<TokenType> if nullable).",
+      /*retTy=*/"::mlir::Type",
+      /*methodName=*/"getProducedType",
+      /*args=*/(ins),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/[{
+        if (!$_op.shouldProduceToken())
+          return nullptr;
+        ::reussir::TokenType tokenType = $_op.getTokenType();
+        if ($_op.isNullable())
+          return ::reussir::NullableType::get($_op.getContext(), tokenType);
+        return tokenType;
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/"Get the value being produced.",
+      /*retTy=*/"::mlir::Value",
+      /*methodName=*/"getProducedValue",
+      /*args=*/(ins),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/""
+    >,
+    InterfaceMethod<
+      /*desc=*/"Create and return a new produced value if not yet produced.",
+      /*retTy=*/"::mlir::LogicalResult",
+      /*methodName=*/"replaceWithProduced",
+      /*args=*/(ins "::mlir::PatternRewriter &":$builder),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/""
+    >
+  ];
+}
+
 #endif // REUSSIR_IR_REUSSIRINTERFACES_TD

@@ -1,4 +1,4 @@
-// RUN: %reussir-opt %s --reussir-token-allocation | %FileCheck %s
+// RUN: %reussir-opt %s --reussir-token-instantiation | %FileCheck %s
 
 module attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> : vector<2xi64>>> } {
   

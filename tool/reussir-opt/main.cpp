@@ -44,7 +44,7 @@ int main(int argc, char **argv) {
     return reussir::createReussirIncDecCancellationPass();
   });
   mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
-    return reussir::createReussirTokenAllocationPass();
+    return reussir::createReussirTokenInstantiationPass();
   });
   return failed(mlir::MlirOptMain(
       argc, argv, "Reussir analysis and optimization driver\n", registry));

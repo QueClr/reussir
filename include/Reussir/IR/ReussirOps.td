@@ -265,7 +265,9 @@ def ReussirRcIncOp : ReussirRcOp<"inc", []> {
   let hasVerifier = 1;
 }
 
-def ReussirRcDecOp : ReussirRcOp<"dec", []> {
+def ReussirRcDecOp : ReussirRcOp<"dec", [
+  DeclareOpInterfaceMethods<TokenProducerInterface>
+]> {
   let summary = "Decrement reference count";
   let description = [{
     `reussir.rc.dec` decrements the reference count of a RC pointer.

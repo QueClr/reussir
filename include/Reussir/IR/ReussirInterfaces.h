@@ -13,9 +13,10 @@
 #ifndef REUSSIR_IR_REUSSIRINTERFACES_H
 #define REUSSIR_IR_REUSSIRINTERFACES_H
 
-#include "mlir/IR/OpDefinition.h"
-#include "mlir/IR/Value.h"
 #include "Reussir/IR/ReussirTypes.h"
+#include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/Value.h"
 
 /// Include the generated interface declarations.
 #include "Reussir/IR/ReussirInterfaces.h.inc"

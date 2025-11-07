@@ -155,13 +155,13 @@ def ReussirIncDecCancellationPass
 }
 
 //===----------------------------------------------------------------------===//
-// TokenAllocation
+// TokenInstantiation
 //===----------------------------------------------------------------------===//
-def ReussirTokenAllocationPass
-    : Pass<"reussir-token-allocation", "::mlir::func::FuncOp"> {
-  let summary = "insert token allocations for TokenAcceptor operations";
+def ReussirTokenInstantiationPass
+    : Pass<"reussir-token-instantiation", "::mlir::func::FuncOp"> {
+  let summary = "insert token instantiations for TokenAcceptor operations";
   let description = [{
-    `reussir-token-allocation` inserts token allocation operations for operations
+    `reussir-token-instantiation` inserts token allocation operations for operations
     implementing the TokenAcceptor interface that do not have a token assigned.
     For each such operation, a `reussir.token.alloc` operation is inserted
     immediately before it, and the token is assigned to the operation.

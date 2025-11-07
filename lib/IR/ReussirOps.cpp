@@ -31,6 +31,7 @@
 #include "Reussir/IR/ReussirEnumAttrs.h"
 #include "Reussir/IR/ReussirOps.h"
 #include "Reussir/IR/ReussirTypes.h"
+#include "mlir/IR/PatternMatch.h"
 
 #define GET_OP_CLASSES
 #include "Reussir/IR/ReussirOps.cpp.inc"
@@ -119,8 +120,7 @@ mlir::LogicalResult ReussirRcDecOp::verify() {
     return mlir::success();
   }
   if (getNullableToken() == nullptr)
-    return emitOpError("nullable token must be provided for non-rigid RC "
-                       "decrement");
+    return mlir::success();
   NullableType nullableType = getNullableToken().getType();
   TokenType tokenType = llvm::dyn_cast<TokenType>(nullableType.getPtrTy());
   RcBoxType rcBoxType = RcType.getInnerBoxType();
@@ -146,6 +146,55 @@ mlir::LogicalResult ReussirRcDecOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// RcDecOp TokenProducer Interface
+//===----------------------------------------------------------------------===//
+bool ReussirRcDecOp::shouldProduceToken() {
+  RcType rcType = getRcPtr().getType();
+  // Only shared capability RC pointers produce tokens
+  return rcType.getCapability() == reussir::Capability::shared;
+}
+
+bool ReussirRcDecOp::isNullable() {
+  // Always returns nullable tokens
+  return true;
+}
+
+TokenType ReussirRcDecOp::getTokenType() {
+  RcType rcType = getRcPtr().getType();
+  RcBoxType rcBoxType = rcType.getInnerBoxType();
+
+  // Compute token type as in verify
+  auto dataLayout = mlir::DataLayout::closest(getOperation());
+  auto alignment = dataLayout.getTypeABIAlignment(rcBoxType);
+  auto size = dataLayout.getTypeSize(rcBoxType);
+
+  return TokenType::get(getContext(), alignment, size.getFixedValue());
+}
+
+mlir::Value ReussirRcDecOp::getProducedValue() { return getNullableToken(); }
+
+mlir::LogicalResult
+ReussirRcDecOp::replaceWithProduced(mlir::PatternRewriter &builder) {
+  // Return early if already produced a token
+  if (getNullableToken() != nullptr)
+    return mlir::failure();
+
+  mlir::OpBuilder::InsertionGuard guard(builder);
+
+  // Compute the token type
+  TokenType tokenType = getTokenType();
+  NullableType nullableTokenType = NullableType::get(getContext(), tokenType);
+
+  // Create a new RcDecOp with the token result
+  builder.setInsertionPoint(getOperation());
+  builder.replaceOpWithNewOp<ReussirRcDecOp>(getOperation(),
+                                             nullableTokenType, // result type
+                                             getRcPtr()         // operand
+  );
+
+  return mlir::success();
+}
+//===----------------------------------------------------------------------===//
 // RcCreateOp verification
 //===----------------------------------------------------------------------===//
 mlir::LogicalResult ReussirRcCreateOp::verify() {
@@ -161,7 +210,7 @@ mlir::LogicalResult ReussirRcCreateOp::verify() {
     return emitOpError("RC type capability must be ")
            << stringifyCapability(expectedCap) << ", but got "
            << stringifyCapability(RcType.getCapability());
-  
+
   // Only verify token layout if token is present
   if (getToken()) {
     TokenType tokenType = getToken().getType();
@@ -188,8 +237,8 @@ mlir::LogicalResult ReussirRcCreateOp::verify() {
 // RcCreateOp TokenAcceptor Interface
 //===----------------------------------------------------------------------===//
 TokenType ReussirRcCreateOp::getTokenType() {
-  auto rcBoxType = RcBoxType::get(
-      getContext(), getValue().getType(), getRegion() != nullptr);
+  auto rcBoxType = RcBoxType::get(getContext(), getValue().getType(),
+                                  getRegion() != nullptr);
   auto dataLayout = mlir::DataLayout::closest(getOperation());
   auto alignment = dataLayout.getTypeABIAlignment(rcBoxType);
   auto size = dataLayout.getTypeSize(rcBoxType);
@@ -1081,7 +1130,7 @@ mlir::ParseResult ReussirClosureCreateOp::parse(mlir::OpAsmParser &parser,
     result.addAttribute("vtable", vtableAttr);
   result.addRegion(std::move(bodyRegion));
   result.addTypes(closureType);
-  
+
   // Only resolve token operands if token was present
   if (appeared[static_cast<size_t>(Keyword::token)]) {
     if (llvm::failed(parser.resolveOperands({tokenOperand}, tokenType,
@@ -1138,7 +1187,7 @@ mlir::LogicalResult ReussirClosureCreateOp::verify() {
       llvm::cast<ClosureType>(getClosure().getType().getElementType());
   if (!outlinedFlag && !inlinedFlag)
     return emitOpError("closure must be outlined or inlined");
-  
+
   // Only verify token layout if token is present
   if (getToken()) {
     RcBoxType closureBoxType = getRcClosureBoxType();
@@ -1155,7 +1204,7 @@ mlir::LogicalResult ReussirClosureCreateOp::verify() {
              << ", closure box alignment: " << closureBoxAlignment
              << ", token alignment: " << tokenType.getAlign();
   }
-  
+
   // Check that region arguments match the closure input types
   if (inlinedFlag) {
     auto types = getBody().getArgumentTypes();
