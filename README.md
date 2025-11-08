@@ -204,6 +204,24 @@ ninja
 cargo build
 ```
 
+### VSCode Settings
+
+Recommended workspace settings for VSCode are captured in `.vscode/settings.json`:
+
+```json
+{
+    "cmake.generator": "Ninja",
+    "cmake.configureSettings": {
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_C_COMPILER": "clang"
+    },
+    "editor.formatOnSave": true,
+    "files.insertFinalNewline": true,
+    "haskell.formattingProvider": "fourmolu",
+    "tinymist.rootPath": "${workspaceFolder}/www"
+}
+```
+
 ### Running Specific Tests
 
 ```bash
@@ -227,9 +245,10 @@ cd build && ctest -R test_name
 
 ## License
 
-This project is licensed under either of
+The Reussir Project is licensed under either the Apache License, Version 2.0, 
+or the MIT License, at your option.
 
-- Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
-- MIT License ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+If you choose to apply the Apache License, Version 2.0, you may additionally 
+include the LLVM exceptions, at your discretion.
 
-at your option.
+Please refer to [LICENSE](LICENSE) for detailed descriptions.

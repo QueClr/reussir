@@ -41,6 +41,8 @@
           haskellPkgs.ghc haskellPkgs.cabal-install haskellPkgs.haskell-language-server
           # Rust dependencies
           rustToolchain
+          # Documentation dependencies
+          typst
         ];
 
         # Clean environment, explicit tool setup
