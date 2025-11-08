@@ -10,6 +10,7 @@
   - #chapter("chapters/language/reference-capabilities.typ")[Reference Capabilities]
   = Development Guide
   - #chapter("chapters/development/compilation-process.typ")[Compilation Process]
+  - #chapter("chapters/development/closures.typ")[Closures]
 ])
 
 // re-export page template
