@@ -11,6 +11,7 @@
   = Development Guide
   - #chapter("chapters/development/compilation-process.typ")[Compilation Process]
   - #chapter("chapters/development/closures.typ")[Closures]
+  - #chapter("chapters/development/regions.typ")[Regions]
 ])
 
 // re-export page template
