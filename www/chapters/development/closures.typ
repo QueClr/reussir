@@ -230,11 +230,11 @@ closure is uniquely owned. If it is, we proceed directly. Otherwise, we will clo
 the closure first. This is handled by the `reussir.closure.uniqify` operation.
 The `reussir.closure.apply` operation itself does not check if the closure is uniquely owned.
 The frontend should always use `reussir.closure.uniqify` to ensure the closure is uniquely owned.
-Addtionally, all supplied arguments are also "consumed", making it necessary for
+Additionally, all supplied arguments are also "consumed", making it necessary for
 the frontend compiler to maintain their ownership properly.
 
-The `reussir.closure.uniqify` operation does not decreases the reference count
-of the original closure. Hence, decrement operation should be performed when the
+The `reussir.closure.uniqify` operation does not decrease the reference count
+of the original closure. Hence, a decrement operation should be performed when the
 original closure is no longer needed.
 
 For implementation details, the `reussir.closure.apply` operation basically first
@@ -256,7 +256,7 @@ uniqueness check should be performed before the evaluation.
 
 It is rather complicated to compile closures. The overall procedure is as follows:
 
-1. the frontend compiler emit closure code without `token` and `vtable` attributes.
+1. the frontend compiler emits closure code without `token` and `vtable` attributes.
 2. in the `reussir-token-instantiation` pass, the token is instantiated.
 3. in the `reussir-closure-outlining` pass, the closure body is outlined and a proper `vtable` is generated.
 4. in the `reuse-analysis` pass (TODO), the closure token is optimized in the same way as other `Rc` managed objects.
@@ -265,14 +265,15 @@ It is rather complicated to compile closures. The overall procedure is as follow
 === Considerations and Remarks
 
 - Unlike `Lean` or `Koka`, argument types are kept within backend IR. We do not
-  reply on the so-called "uniformed calling convention" in `Lean` to avoid simplify
+  rely on the so-called "uniformed calling convention" in `Lean`; instead, we keep
+  explicit types to simplify
   the application and evaluation logic. In this way, we can avoid boxing and unboxing
   of arguments.
 
 - Closures are special `Rc` objects that can only be created by the `reussir.closure.create` operation.
   However, its memory resource (`token`) is still handled in the same way as other `Rc` managed objects,
   which is different from practices in other languages.
-  Closure objects cleanup also aligns with other `Rc` managed objects. The backend takes care of thed
+  Closure object cleanup also aligns with other `Rc` managed objects. The backend takes care of the
   destruction logic.
 
 - The backend has the feature to detect if a closure is a trivially forwarding closure, that is,
@@ -282,5 +283,5 @@ It is rather complicated to compile closures. The overall procedure is as follow
 
 === Future Work
 
-- Add Escape Analysis and avoid allocations when possible. Heap memory token can possibly be eliminated by using stack memory.
-- Consider reuse the closure token if its layout information can be inferred.
+- Add escape analysis and avoid allocations when possible. Heap memory tokens can possibly be eliminated by using stack memory.
+- Consider reusing the closure token if its layout information can be inferred.
