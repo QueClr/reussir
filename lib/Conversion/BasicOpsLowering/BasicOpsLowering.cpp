@@ -846,8 +846,10 @@ struct ReussirRegionCreateOpConversionPattern
     auto converter = static_cast<const LLVMTypeConverter *>(typeConverter);
     auto one = rewriter.create<mlir::arith::ConstantOp>(
         op.getLoc(), mlir::IntegerAttr::get(converter->getIndexType(), 1));
-    rewriter.replaceOpWithNewOp<mlir::LLVM::AllocaOp>(op, ptrType, ptrType,
-                                                      one);
+    auto alloca = rewriter.replaceOpWithNewOp<mlir::LLVM::AllocaOp>(
+        op, ptrType, ptrType, one);
+    auto nullValue = rewriter.create<mlir::LLVM::ZeroOp>(op.getLoc(), ptrType);
+    rewriter.create<mlir::LLVM::StoreOp>(op.getLoc(), nullValue, alloca);
     return mlir::success();
   }
 };
