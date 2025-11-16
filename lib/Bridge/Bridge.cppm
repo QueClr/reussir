@@ -129,9 +129,8 @@ void createLoweringPipeline(mlir::PassManager &pm) {
   pm.addPass(createCanonicalizerPass());
 }
 void runNPMOptimization(llvm::Module &llvmModule, ReussirOptOption opt) {
-  if (opt == REUSSIR_OPT_NONE) {
+  if (opt == REUSSIR_OPT_NONE || opt == REUSSIR_OPT_TPDE)
     return;
-  }
 
   // Initialize PassBuilder without TargetMachine
   llvm::PassBuilder pb;
@@ -242,6 +241,62 @@ std::optional<llvm::Reloc::Model> toRelocModel(ReussirRelocationModel model) {
   }
   llvm_unreachable("unknown relocation model");
 }
+
+std::unique_ptr<mlir::MLIRContext> buildMLIRContext() {
+  DialectRegistry registry;
+  registry.insert<reussir::ReussirDialect, DLTIDialect, LLVM::LLVMDialect,
+                  arith::ArithDialect, memref::MemRefDialect, scf::SCFDialect,
+                  ub::UBDialect, func::FuncDialect, cf::ControlFlowDialect>();
+  registerLLVMDialectTranslation(registry);
+  registerBuiltinDialectTranslation(registry);
+  auto context = std::make_unique<mlir::MLIRContext>(registry);
+  context->loadAllAvailableDialects();
+  return context;
+}
+
+std::unique_ptr<mlir::PassManager>
+buildPassManager(mlir::MLIRContext &context) {
+  auto pm = std::make_unique<mlir::PassManager>(&context);
+  createLoweringPipeline(*pm);
+  return pm;
+}
+
+std::unique_ptr<llvm::Module>
+translateToModule(llvm::StringRef texture, llvm::LLVMContext &llvmCtx,
+                  mlir::MLIRContext &context, mlir::PassManager &pm,
+                  const llvm::DataLayout &dl,
+                  llvm::StringRef source_name = "") {
+#if LLVM_VERSION_MAJOR >= 21
+  // Since LLVM 21.1.0, the MLIR parser does not depend on null terminator.
+  OwningOpRef<ModuleOp> module =
+      parseSourceString<ModuleOp>(texture, &context, source_name);
+#else
+  llvm::SourceMgr sourceMgr;
+  auto buffer = llvm::MemoryBuffer::getMemBufferCopy(texture, source_name);
+  sourceMgr.AddNewSourceBuffer(std::move(buffer), llvm::SMLoc());
+  OwningOpRef<ModuleOp> module = parseSourceFile<ModuleOp>(sourceMgr, &context);
+#endif
+  if (!module) {
+    spdlog::error("Failed to parse MLIR module from provided string.");
+    return nullptr;
+  }
+  // add data layout to the module
+  module->getOperation()->setAttr(
+      mlir::LLVM::LLVMDialect::getDataLayoutAttrName(),
+      mlir::StringAttr::get(&context, dl.getStringRepresentation()));
+  mlir::DataLayoutSpecInterface dlSpec =
+      mlir::translateDataLayout(dl, &context);
+  module->getOperation()->setAttr(mlir::DLTIDialect::kDataLayoutAttrName,
+                                  dlSpec);
+  // run the lowering pipeline
+  if (pm.run(module->getOperation()).failed()) {
+    spdlog::error("Failed to lower MLIR module to LLVM dialect.");
+    return nullptr;
+  }
+  spdlog::info("Successfully lowered MLIR module.");
+  // finalize as LLVM IR
+  return translateModuleToLLVMIR(module->getOperation(), llvmCtx, texture);
+}
 } // namespace bridge
 
 namespace {
@@ -293,36 +348,11 @@ void reussir_bridge_compile_for_target(
   llvm::InitializeAllAsmParsers();
   spdlog::info("Initialized all targets.");
 
-  // 1) Build a registry and MLIR context with required dialects.
-  DialectRegistry registry;
-  registry.insert<reussir::ReussirDialect, DLTIDialect, LLVM::LLVMDialect,
-                  arith::ArithDialect, memref::MemRefDialect, scf::SCFDialect,
-                  ub::UBDialect, func::FuncDialect, cf::ControlFlowDialect>();
-  registerLLVMDialectTranslation(registry);
-  registerBuiltinDialectTranslation(registry);
-  MLIRContext context(registry);
-  context.loadAllAvailableDialects();
-  spdlog::info("Loaded all available dialects.");
+  // Build a registry and MLIR context with required dialects.
+  auto context = buildMLIRContext();
+  spdlog::info("Built MLIR context.");
 
-// 2) Parse the incoming MLIR module from string.
-#if LLVM_VERSION_MAJOR >= 21
-  // Since LLVM 21.1.0, the MLIR parser does not depend on null terminator.
-  OwningOpRef<ModuleOp> module =
-      parseSourceString<ModuleOp>(mlir_module, &context, source_name);
-#else
-  llvm::SourceMgr sourceMgr;
-  auto buffer = llvm::MemoryBuffer::getMemBufferCopy(mlir_module, source_name);
-  sourceMgr.AddNewSourceBuffer(std::move(buffer), llvm::SMLoc());
-  OwningOpRef<ModuleOp> module = parseSourceFile<ModuleOp>(sourceMgr, &context);
-#endif
-
-  if (!module) {
-    spdlog::error("Failed to parse MLIR module from provided string.");
-    return;
-  }
-  spdlog::info("Parsed MLIR module successfully.");
-
-  // 3) Query target triple, CPU and features, then
+  // Query target triple, CPU and features, then
   //    create an LLVM TargetMachine to derive the data layout string.
   std::string triple = target_triple;
   llvm::StringRef cpu = target_cpu;
@@ -334,7 +364,7 @@ void reussir_bridge_compile_for_target(
     spdlog::error("LLVM target lookup failed: {}", error);
     return;
   }
-
+  spdlog::info("LLVM target lookup succeeded.");
   llvm::TargetOptions targetOptions;
 #if LLVM_VERSION_MAJOR >= 21
   auto targetTriple = llvm::Triple{llvm::StringRef{triple}};
@@ -351,34 +381,19 @@ void reussir_bridge_compile_for_target(
     spdlog::error("Failed to create LLVM TargetMachine.");
     return;
   }
-
+  spdlog::info("LLVM TargetMachine created.");
   const llvm::DataLayout dl = tm->createDataLayout();
-
-  module->getOperation()->setAttr(
-      mlir::LLVM::LLVMDialect::getDataLayoutAttrName(),
-      mlir::StringAttr::get(&context, dl.getStringRepresentation()));
-  mlir::DataLayoutSpecInterface dlSpec =
-      mlir::translateDataLayout(dl, &context);
-  module->getOperation()->setAttr(mlir::DLTIDialect::kDataLayoutAttrName,
-                                  dlSpec);
 
   spdlog::debug("Target triple: {}", triple);
   spdlog::debug("CPU: {}, features: {}", cpu.str(), target_features);
   spdlog::debug("Data layout: {}", dl.getStringRepresentation());
 
-  // Remaining lowering/codegen will be added later.
-  mlir::PassManager pm(&context);
-  createLoweringPipeline(pm);
-  if (pm.run(module->getOperation()).failed()) {
-    spdlog::error("Failed to lower MLIR module to LLVM dialect.");
-    return;
-  }
-  spdlog::info("Successfully lowered MLIR module.");
+  auto pm = buildPassManager(*context);
 
   // 4) Convert the MLIR module to LLVM IR.
   llvm::LLVMContext llvmCtx;
   std::unique_ptr<llvm::Module> llvmModule =
-      translateModuleToLLVMIR(module->getOperation(), llvmCtx, source_name);
+      translateToModule(mlir_module, llvmCtx, *context, *pm, dl, source_name);
 
   if (!llvmModule) {
     spdlog::error("Failed to translate MLIR module to LLVM IR.");
