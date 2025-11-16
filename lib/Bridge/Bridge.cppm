@@ -1,4 +1,4 @@
-//===-- Bridge.cpp - Reussir backend bridge ---------------------*- c++ -*-===//
+//===-- Bridge.cppm - Reussir backend bridge --------------------*- c++ -*-===//
 //
 // Part of the Reussir project, dual licensed under the Apache License v2.0 or
 // the MIT License.
@@ -6,9 +6,9 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file implements the bridge between rust frontend and C++ backend.
+// This file implements the bridge between frontend and backend.
 //===----------------------------------------------------------------------===//
-
+module;
 #include <llvm/ADT/StringRef.h>
 #include <llvm/ADT/Twine.h>
 #include <llvm/IR/DataLayout.h>
@@ -75,10 +75,12 @@
 #include "Reussir/Conversion/SCFOpsLowering.h"
 #include "Reussir/IR/ReussirDialect.h"
 
+export module Reussir.Bridge;
+
 using namespace mlir;
 
 namespace reussir {
-namespace {
+export namespace bridge {
 void setSpdlogLevel(ReussirLogLevel level) {
   switch (level) {
   case REUSSIR_LOG_ERROR:
@@ -240,8 +242,10 @@ std::optional<llvm::Reloc::Model> toRelocModel(ReussirRelocationModel model) {
   }
   llvm_unreachable("unknown relocation model");
 }
-} // namespace
+} // namespace bridge
 
+namespace {
+using namespace reussir::bridge;
 int reussir_bridge_has_tpde() {
 #ifdef REUSSIR_HAS_TPDE
   return 1;
@@ -427,7 +431,8 @@ void reussir_bridge_compile_for_target(
     }
 #else
     // TPDE not available, fallback to default optimization pipeline
-    spdlog::warn("TPDE optimization requested but not available (it requires LLVM < 22 and ELF target). "
+    spdlog::warn("TPDE optimization requested but not available (it requires "
+                 "LLVM < 22 and ELF target). "
                  "Falling back to default optimization level.");
     runNPMOptimization(*llvmModule, opt);
 
@@ -448,33 +453,33 @@ void reussir_bridge_compile_for_target(
 #endif
   }
 }
-
+} // namespace
 } // namespace reussir
 
 // C API wrapper
-extern "C" {
-int reussir_bridge_has_tpde() { return reussir::reussir_bridge_has_tpde(); }
+export extern "C" {
+  int reussir_bridge_has_tpde() { return reussir::reussir_bridge_has_tpde(); }
 
-char *reussir_bridge_get_default_target_triple() {
-  return reussir::reussir_bridge_get_default_target_triple();
-}
+  char *reussir_bridge_get_default_target_triple() {
+    return reussir::reussir_bridge_get_default_target_triple();
+  }
 
-char *reussir_bridge_get_default_target_cpu() {
-  return reussir::reussir_bridge_get_default_target_cpu();
-}
+  char *reussir_bridge_get_default_target_cpu() {
+    return reussir::reussir_bridge_get_default_target_cpu();
+  }
 
-char *reussir_bridge_get_default_target_features() {
-  return reussir::reussir_bridge_get_default_target_features();
-}
+  char *reussir_bridge_get_default_target_features() {
+    return reussir::reussir_bridge_get_default_target_features();
+  }
 
-void reussir_bridge_compile_for_target(
-    const char *mlir_module, const char *source_name, const char *output_file,
-    ReussirOutputTarget target, ReussirOptOption opt, ReussirLogLevel log_level,
-    const char *target_triple, const char *target_cpu,
-    const char *target_features, ReussirCodeModel code_model,
-    ReussirRelocationModel reloc_model) {
-  reussir::reussir_bridge_compile_for_target(
-      mlir_module, source_name, output_file, target, opt, log_level,
-      target_triple, target_cpu, target_features, code_model, reloc_model);
-}
+  void reussir_bridge_compile_for_target(
+      const char *mlir_module, const char *source_name, const char *output_file,
+      ReussirOutputTarget target, ReussirOptOption opt,
+      ReussirLogLevel log_level, const char *target_triple,
+      const char *target_cpu, const char *target_features,
+      ReussirCodeModel code_model, ReussirRelocationModel reloc_model) {
+    reussir::reussir_bridge_compile_for_target(
+        mlir_module, source_name, output_file, target, opt, log_level,
+        target_triple, target_cpu, target_features, code_model, reloc_model);
+  }
 }
