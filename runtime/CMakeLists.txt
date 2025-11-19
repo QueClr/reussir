@@ -41,8 +41,8 @@ add_custom_target(reussir-rt-install ALL
         ${CMAKE_BINARY_DIR}/target/${CARGO_PROFILE_DIR}/${REUSSIR_RT_SHARED}
         ${REUSSIR_RT_OUTPUT_DIR}/${REUSSIR_RT_SHARED}
     COMMAND ${CMAKE_COMMAND} -E copy
-        ${CMAKE_BINARY_DIR}/target/${CARGO_PROFILE_DIR}/reussir-rustc
-        ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/reussir-rustc
+        ${CMAKE_BINARY_DIR}/target/${CARGO_PROFILE_DIR}/reussir-rustc${CMAKE_EXECUTABLE_SUFFIX}
+        ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/reussir-rustc${CMAKE_EXECUTABLE_SUFFIX}
     COMMENT "Installing reussir-rt libraries"
     DEPENDS reussir-rt-build
 )

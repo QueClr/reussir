@@ -16,3 +16,5 @@ crate-type = ["dylib", "staticlib", "rlib"]
 [[bin]]
 name = "reussir-rustc"
 path = "utils/rustc.rs"
+test = false
+bench = false

@@ -34,17 +34,14 @@ jobs:
             mingw-w64-clang-x86_64-gtest
             mingw-w64-clang-x86_64-python
             mingw-w64-clang-x86_64-python-pip
-      
-      - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: nightly
-          components: rust-src, rustfmt, clippy, rustc-dev, llvm-tools-preview
+            mingw-w64-clang-x86_64-rustup
 
-      - name: Install Python dependencies
+      - name: Install Rust and Python dependencies
         shell: msys2 {0}
         run: |
           pip install lit
+          rustup default nightly
+          rustup component add rust-src rustfmt clippy rustc-dev llvm-tools-preview
 
       - name: Configure CMake
         shell: msys2 {0}
