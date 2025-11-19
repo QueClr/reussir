@@ -25,8 +25,8 @@
         pythonPkgs = pkgs.python313Packages;
 
         # Nightly Rust toolchain from Nix
-        rustToolchain = pkgs.rust-bin.stable."1.91.0".default.override {
-          extensions = [ "rust-src" "rustfmt" "clippy" ];
+        rustToolchain = pkgs.rust-bin.nightly."2025-11-07".default.override {
+          extensions = [ "rust-src" "rustfmt" "clippy" "rustc-dev" "llvm-tools-preview" ];
         };
 
         buildInputs = with pkgs; [
