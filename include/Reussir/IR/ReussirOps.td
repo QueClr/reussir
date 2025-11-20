@@ -13,7 +13,8 @@
 #ifndef REUSSIR_IR_REUSSIROPS_TD
 #define REUSSIR_IR_REUSSIROPS_TD
 
-include "mlir/IR/BuiltinAttributes.td"
+include "mlir/IR/AttrTypeBase.td"
+include "mlir/IR/OpBase.td"
 include "Reussir/IR/ReussirDialect.td"
 include "Reussir/IR/ReussirAttrs.td"
 include "Reussir/IR/ReussirTypes.td"
@@ -1087,10 +1088,10 @@ def ReussirClosureCloneOp : ReussirClosureOp<"clone", []> {
 // Reussir Poly FFI Operations
 //===----------------------------------------------------------------------===//
 
-def ReussirPolyFfiTemplateOp : ReussirOp<"polyffi.template", []> {
+def ReussirPolyFFIOp : ReussirOp<"polyffi", []> {
   let summary = "Polymorphic FFI instantiation";
   let description = [{
-    `reussir.polyffi.template` instantiates the FFI format of the type.
+    `reussir.polyffi` instantiates the FFI format of the type.
 
     The operation takes a module texture string and a dictionary of parameters.
     The dictionary entries can specify types to be instantiated.
@@ -1100,14 +1101,20 @@ def ReussirPolyFfiTemplateOp : ReussirOp<"polyffi.template", []> {
   }];
 
   let arguments = (ins
-    StrAttr:$moduleTexture,
-    DictionaryAttr:$parameters
+    OptionalAttr<StrAttr>:$moduleTexture,
+    OptionalAttr<ElementsAttr>:$compiledModule,
+    OptionalAttr<DictionaryAttr>:$substitutions
   );
 
   let assemblyFormat = [{
-    `texture` `(` $moduleTexture `)`
-    `parameters` `(` $parameters `)` attr-dict
+    oilist (
+      `texture` `(` $moduleTexture `)`
+    | `compiled` `(` $compiledModule `)`
+    | `substitutions` `(` $substitutions `)`
+    ) attr-dict
   }];
+
+  let hasVerifier = 1;
 }
 
 #endif // REUSSIR_IR_REUSSIROPS_TD
