@@ -1,5 +1,4 @@
-module;
-
+#include "Reussir/RustCompiler.h"
 #include <array>
 #include <llvm/ADT/SmallString.h>
 #include <llvm/ADT/SmallVector.h>
@@ -10,8 +9,6 @@ module;
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Support/Path.h>
 #include <llvm/Support/Program.h>
-
-export module Reussir.RustCompiler;
 
 #ifdef _WIN32
 #define EXEC_SUFFIX ".exe"
@@ -53,7 +50,7 @@ constexpr std::array<llvm::StringRef, 14> RUSTC_DEPS_HINTS = {
 };
 } // namespace
 
-export llvm::StringRef findRustCompiler() {
+llvm::StringRef findRustCompiler() {
   // first check if REUSSIR_RUSTC is set
   if (const char *env_p = std::getenv("REUSSIR_RUSTC"))
     return env_p;
@@ -66,7 +63,7 @@ export llvm::StringRef findRustCompiler() {
   return "";
 }
 
-export llvm::StringRef findRustCompilerDeps() {
+llvm::StringRef findRustCompilerDeps() {
   // first check if REUSSIR_RUSTC_DEPS is set
   if (const char *env_p = std::getenv("REUSSIR_RUSTC_DEPS"))
     return env_p;
@@ -77,9 +74,9 @@ export llvm::StringRef findRustCompilerDeps() {
   return "";
 }
 
-export std::unique_ptr<llvm::Module>
+std::unique_ptr<llvm::Module>
 compileRustSource(llvm::LLVMContext &context, llvm::StringRef sourceCode,
-                  llvm::ArrayRef<llvm::StringRef> additionalArgs = {}) {
+                  llvm::ArrayRef<llvm::StringRef> additionalArgs) {
   llvm::StringRef rustcPath = findRustCompiler();
   llvm::StringRef rustcDepsPath = findRustCompilerDeps();
   if (rustcPath.empty() || rustcDepsPath.empty()) {

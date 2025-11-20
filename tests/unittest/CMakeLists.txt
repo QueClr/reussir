@@ -12,20 +12,13 @@ target_sources(
     PRIVATE FILE_SET CXX_MODULES FILES ${module_files} 
     PRIVATE ${source_files})
 
-target_compile_options(reussir-ut
-  PRIVATE
-    -fno-exceptions
-)
-
 # Link against required libraries
 target_link_libraries(reussir-ut
   PRIVATE
+    ReussirRustCompiler
     MLIRReussir
-    MLIRReussirBridge
-    gtest
-    gtest_main
-    gmock
-    gmock_main
+    GTest::gtest
+    GTest::gtest_main
 )
 
 # Include necessary directories

@@ -1082,4 +1082,32 @@ def ReussirClosureCloneOp : ReussirClosureOp<"clone", []> {
   }];
   let hasVerifier = 1;
 }
+
+//===----------------------------------------------------------------------===//
+// Reussir Poly FFI Operations
+//===----------------------------------------------------------------------===//
+
+def ReussirPolyFfiTemplateOp : ReussirOp<"polyffi.template", []> {
+  let summary = "Polymorphic FFI instantiation";
+  let description = [{
+    `reussir.polyffi.template` instantiates the FFI format of the type.
+
+    The operation takes a module texture string and a dictionary of parameters.
+    The dictionary entries can specify types to be instantiated.
+
+    For example, a dictionary entry can be "[:type:]" : SomeTypeAttr,
+    meaning that instantiate the FFI format of the type.
+  }];
+
+  let arguments = (ins
+    StrAttr:$moduleTexture,
+    DictionaryAttr:$parameters
+  );
+
+  let assemblyFormat = [{
+    `texture` `(` $moduleTexture `)`
+    `parameters` `(` $parameters `)` attr-dict
+  }];
+}
+
 #endif // REUSSIR_IR_REUSSIROPS_TD

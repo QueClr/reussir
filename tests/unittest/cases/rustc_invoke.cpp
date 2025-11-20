@@ -1,7 +1,6 @@
+#include "Reussir/RustCompiler.h"
 #include <gtest/gtest.h>
 #include <llvm/IR/LLVMContext.h>
-
-import Reussir.RustCompiler;
 
 namespace reussir {
 constexpr llvm::StringRef EXAMPLE_SOURCE = R"(
