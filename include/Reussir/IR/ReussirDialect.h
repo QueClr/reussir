@@ -21,4 +21,8 @@
 
 #include "Reussir/IR/ReussirDialect.h.inc"
 
+namespace reussir {
+void registerReussirDialectTranslation(mlir::DialectRegistry &registry);
+} // namespace reussir
+
 #endif // REUSSIR_IR_REUSSIRDIALECT_H

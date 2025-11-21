@@ -140,6 +140,42 @@ struct ReussirTokenReinterpretConversionPattern
   }
 };
 
+struct ReussirRcReinterpretConversionPattern
+    : public mlir::OpConversionPattern<ReussirRcReinterpretOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(ReussirRcReinterpretOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    // For reinterpret, we just use the input token directly since it's already
+    // converted to an LLVM pointer by the type converter
+    rewriter.replaceOp(op, adaptor.getRcPtr());
+    return mlir::success();
+  }
+};
+
+struct ReussirRcFetcjDectConversionPattern
+    : public mlir::OpConversionPattern<ReussirRcFetchDecOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(ReussirRcFetchDecOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    auto indexTy = static_cast<const LLVMTypeConverter *>(getTypeConverter())
+                       ->getIndexType();
+    mlir::Value loaded = rewriter.create<mlir::LLVM::LoadOp>(
+        op.getLoc(), indexTy, adaptor.getRcPtr());
+    mlir::Value one = rewriter.create<mlir::arith::ConstantOp>(
+        op.getLoc(), rewriter.getIntegerAttr(indexTy, 1));
+    mlir::Value updated =
+        rewriter.create<mlir::arith::SubIOp>(op.getLoc(), loaded, one);
+    rewriter.create<mlir::LLVM::StoreOp>(op.getLoc(), updated,
+                                         adaptor.getRcPtr());
+    rewriter.replaceOp(op, loaded);
+    return mlir::success();
+  }
+};
+
 struct ReussirTokenReallocConversionPattern
     : public mlir::OpConversionPattern<ReussirTokenReallocOp> {
   using OpConversionPattern::OpConversionPattern;
@@ -1063,7 +1099,8 @@ struct BasicOpsLoweringPass
         ReussirRecordCompoundOp, ReussirRecordVariantOp, ReussirRefProjectOp,
         ReussirRecordTagOp, ReussirRecordCoerceOp, ReussirRegionVTableOp,
         ReussirRcFreezeOp, ReussirRegionCleanupOp, ReussirRegionCreateOp,
-        ReussirClosureApplyOp, ReussirClosureCloneOp>();
+        ReussirRcReinterpretOp, ReussirClosureApplyOp, ReussirClosureCloneOp,
+        ReussirRcFetchDecOp>();
     target.addLegalDialect<mlir::LLVM::LLVMDialect>();
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
@@ -1093,6 +1130,8 @@ void populateBasicOpsLoweringToLLVMConversionPatterns(
       ReussirRegionCleanupOpConversionPattern,
       ReussirRegionCreateOpConversionPattern,
       ReussirClosureApplyOpConversionPattern,
-      ReussirClosureCloneOpConversionPattern>(converter, patterns.getContext());
+      ReussirClosureCloneOpConversionPattern,
+      ReussirRcReinterpretConversionPattern,
+      ReussirRcFetcjDectConversionPattern>(converter, patterns.getContext());
 }
 } // namespace reussir

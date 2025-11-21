@@ -53,7 +53,7 @@ struct ReussirLLVMTranslation : public mlir::LLVMTranslationDialectInterface {
       innerModule->setDataLayout(layout);
       bool flag = llvm::Linker::linkModules(*state.getLLVMModule(),
                                             std::move(innerModule));
-      if (!flag)
+      if (flag)
         return op->emitError("PolyFFI operation cannot be linked");
       return success();
     }
@@ -63,5 +63,11 @@ struct ReussirLLVMTranslation : public mlir::LLVMTranslationDialectInterface {
 } // namespace
 void ReussirDialect::registerInterfaces() {
   addInterfaces<ReussirLLVMTranslation>();
+}
+void registerReussirDialectTranslation(DialectRegistry &registry) {
+  registry.insert<ReussirDialect>();
+  registry.addExtension(+[](MLIRContext *ctx, ReussirDialect *dialect) {
+    dialect->addInterfaces<ReussirLLVMTranslation>();
+  });
 }
 } // namespace reussir

@@ -67,9 +67,8 @@ struct RcDecrementExpansionPattern
         rewriter.create<mlir::arith::ConstantIndexOp>(op.getLoc(), 1));
     auto ifOp = rewriter.create<mlir::scf::IfOp>(
         op.getLoc(), op->getResultTypes(), isOne, true, true);
-    RecordType recType = llvm::dyn_cast<RecordType>(type.getElementType());
     RefType borrowedRefType = rewriter.getType<RefType>(
-        recType, Capability::unspecified, type.getAtomicKind());
+        type.getElementType(), Capability::unspecified, type.getAtomicKind());
     TokenType tokenType = llvm::cast<TokenType>(
         llvm::cast<NullableType>(op.getNullableToken().getType()).getPtrTy());
     {
