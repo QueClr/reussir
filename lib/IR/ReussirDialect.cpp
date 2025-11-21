@@ -23,5 +23,7 @@ void ReussirDialect::initialize() {
   registerTypes();
   // Register the builtin Operations.
   registerOperations();
+  // Register interfaces.
+  registerInterfaces();
 }
 } // namespace reussir

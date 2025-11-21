@@ -43,11 +43,42 @@ module;
 export module Reussir.JITEngine;
 import Reussir.Bridge;
 
+#ifdef _WIN32
+#define REUSSIR_RT_LIBRARY "reussir_rt.dll"
+#elif defined(__APPLE__)
+#define REUSSIR_RT_LIBRARY "libreussir_rt.dylib"
+#else
+#define REUSSIR_RT_LIBRARY "libreussir_rt.so"
+#endif
+
 namespace reussir {
 namespace {
 using namespace llvm;
 using namespace llvm::orc;
 class ReussirASTLayer;
+
+constexpr std::array<const char *, 12> REUSSIR_RT_LIBRARY_HINTS = {
+    REUSSIR_RT_LIBRARY,
+    "build/lib/" REUSSIR_RT_LIBRARY,
+    "./lib" REUSSIR_RT_LIBRARY,
+    "../lib" REUSSIR_RT_LIBRARY,
+    "../../lib" REUSSIR_RT_LIBRARY,
+    "../../../../lib" REUSSIR_RT_LIBRARY,
+    "build/bin/" REUSSIR_RT_LIBRARY,
+    "./bin/" REUSSIR_RT_LIBRARY,
+    "../bin/" REUSSIR_RT_LIBRARY,
+    "../../bin/" REUSSIR_RT_LIBRARY,
+    "../../../bin/" REUSSIR_RT_LIBRARY,
+    "/usr/lib/" REUSSIR_RT_LIBRARY,
+};
+
+const char *lookupReussirRTLibrary() {
+  for (const char *hint : REUSSIR_RT_LIBRARY_HINTS)
+    if (llvm::sys::fs::exists(hint)) {
+      return hint;
+    }
+  return REUSSIR_RT_LIBRARY;
+}
 
 // Holding a pointer to the AST.
 class ReussirASTMaterializationUnit final : public MaterializationUnit {
@@ -220,6 +251,8 @@ public:
     main_dynlib.addGenerator(
         cantFail(DynamicLibrarySearchGenerator::GetForCurrentProcess(
             data_layout.getGlobalPrefix())));
+    main_dynlib.addGenerator(cantFail(DynamicLibrarySearchGenerator::Load(
+        lookupReussirRTLibrary(), data_layout.getGlobalPrefix())));
   }
 
   ~JITEngine() {
