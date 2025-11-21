@@ -73,6 +73,8 @@ constexpr std::array<const char *, 12> REUSSIR_RT_LIBRARY_HINTS = {
 };
 
 const char *lookupReussirRTLibrary() {
+  if (const char *envPath = std::getenv("REUSSIR_RT_LIBRARY_PATH"))
+    return envPath;
   for (const char *hint : REUSSIR_RT_LIBRARY_HINTS)
     if (llvm::sys::fs::exists(hint)) {
       return hint;
