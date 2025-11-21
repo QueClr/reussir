@@ -251,8 +251,12 @@ public:
     main_dynlib.addGenerator(
         cantFail(DynamicLibrarySearchGenerator::GetForCurrentProcess(
             data_layout.getGlobalPrefix())));
-    main_dynlib.addGenerator(cantFail(DynamicLibrarySearchGenerator::Load(
-        lookupReussirRTLibrary(), data_layout.getGlobalPrefix())));
+    auto loaded = DynamicLibrarySearchGenerator::Load(
+        lookupReussirRTLibrary(), data_layout.getGlobalPrefix());
+    if (!loaded)
+      spdlog::warn("Failed to load Reussir runtime library");
+    else
+      main_dynlib.addGenerator(std::move(*loaded));
   }
 
   ~JITEngine() {
