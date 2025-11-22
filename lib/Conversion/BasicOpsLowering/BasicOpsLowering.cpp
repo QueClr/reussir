@@ -396,7 +396,8 @@ struct ReussirReferenceProjectConversionPattern
     llvm::SmallVector<mlir::LLVM::GEPArg> gepArgs;
     auto gepOp = rewriter.create<mlir::LLVM::GEPOp>(
         loc, llvmPtrType, elementType, refPtr,
-        llvm::ArrayRef<mlir::LLVM::GEPArg>{0, op.getIndex().getZExtValue()});
+        llvm::ArrayRef<mlir::LLVM::GEPArg>{
+            0, static_cast<int>(op.getIndex().getZExtValue())});
 
     rewriter.replaceOp(op, gepOp);
     return mlir::success();
@@ -647,7 +648,8 @@ struct ReussirRcBorrowOpConversionPattern
     rewriter.replaceOpWithNewOp<mlir::LLVM::GEPOp>(
         op, llvmPtrType, getTypeConverter()->convertType(rcBoxType),
         adaptor.getRcPtr(),
-        llvm::ArrayRef<mlir::LLVM::GEPArg>{0, rcBoxType.getElementIndex()});
+        llvm::ArrayRef<mlir::LLVM::GEPArg>{
+            0, static_cast<int>(rcBoxType.getElementIndex())});
     return mlir::success();
   }
 };

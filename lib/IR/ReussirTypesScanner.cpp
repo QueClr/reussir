@@ -130,7 +130,8 @@ RecordType::emitScannerInstructions(llvm::SmallVectorImpl<int32_t> &buffer,
     }
 
     // update skips
-    buffer[currentSkip++] = skip(currentVariantStart - currentSkip);
+    buffer[currentSkip] = skip(currentVariantStart - currentSkip);
+    currentSkip++;
     currentVariantStart = buffer.size();
   }
 

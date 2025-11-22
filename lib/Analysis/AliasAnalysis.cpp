@@ -74,6 +74,12 @@ AliasResult ReussirAliasAnalysisImpl::alias(Value lhs, Value rhs) {
             TypedValue<RcType> typedRhs = llvm::cast<TypedValue<RcType>>(rhs);
             return decideAlias(typedLhs, typedRhs);
           })
+          .Case<TypedValue<NullableType>>(
+              [&](TypedValue<NullableType> typedLhs) {
+                TypedValue<NullableType> typedRhs =
+                    llvm::cast<TypedValue<NullableType>>(rhs);
+                return decideAlias(typedLhs, typedRhs);
+              })
           .Default([](Value) { return AliasResult::MayAlias; });
 
   if (res == AliasResult::MustAlias)

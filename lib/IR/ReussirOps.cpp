@@ -1109,7 +1109,7 @@ mlir::ParseResult ReussirClosureCreateOp::parse(mlir::OpAsmParser &parser,
     unknown,
   };
   constexpr size_t NUM_KEYWORDS = static_cast<size_t>(Keyword::unknown);
-  std::array<bool, NUM_KEYWORDS> appeared{false};
+  std::array<bool, NUM_KEYWORDS + 1> appeared{false, false, false, false};
   // Parse return type
   if (parser.parseArrow())
     return mlir::failure();
