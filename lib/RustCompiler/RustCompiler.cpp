@@ -123,6 +123,9 @@ compileRustSourceToBitcode(llvm::LLVMContext &context,
   int code = llvm::sys::ExecuteAndWait(rustcPath, args);
   if (code != 0) {
     llvm::errs() << "Rust compilation failed with exit code " << code << "\n";
+    llvm::errs() << "Full command: " << rustcPath << " ";
+    llvm::interleave(args, llvm::errs(), " ");
+    llvm::errs() << "\n";
     return nullptr;
   }
   if (auto err = srcFile->discard())

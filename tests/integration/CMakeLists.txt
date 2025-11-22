@@ -22,7 +22,7 @@ else()
   set(REUSSIR_LIBRARY_PATH ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
 endif()
 
-find_program(rustc_path ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/rustc${CMAKE_EXECUTABLE_SUFFIX})
+set(rustc_path ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/rustc${CMAKE_EXECUTABLE_SUFFIX})
 configure_file(lit.site.cfg.py.in lit.site.cfg.py @ONLY)
 
 if(DEFINED ENV{MSYSTEM_PREFIX})
