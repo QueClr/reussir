@@ -9,6 +9,7 @@
 #include "Reussir/IR/ReussirDialect.h"
 #include "Reussir/IR/ReussirOps.h"
 #include <llvm/Linker/Linker.h>
+#include <mlir/Dialect/DLTI/DLTI.h>
 #include <mlir/IR/DialectRegistry.h>
 #include <mlir/InitAllDialects.h>
 #include <mlir/InitAllExtensions.h>
