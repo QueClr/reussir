@@ -877,6 +877,11 @@ struct ReussirRegionCleanupOpConversionPattern
     rewriter.replaceOpWithNewOp<mlir::func::CallOp>(
         op, "__reussir_cleanup_region", mlir::TypeRange{},
         mlir::ValueRange{adaptor.getRegion()});
+    auto ptrType = mlir::LLVM::LLVMPointerType::get(rewriter.getContext());
+    auto converter = static_cast<const LLVMTypeConverter *>(typeConverter);
+    size_t ptrSize = converter->getDataLayout().getTypeSize(ptrType);
+    rewriter.create<mlir::LLVM::LifetimeEndOp>(op.getLoc(), ptrSize,
+                                               adaptor.getRegion());
     return mlir::success();
   }
 };
@@ -895,6 +900,8 @@ struct ReussirRegionCreateOpConversionPattern
         op.getLoc(), mlir::IntegerAttr::get(converter->getIndexType(), 1));
     auto alloca = rewriter.replaceOpWithNewOp<mlir::LLVM::AllocaOp>(
         op, ptrType, ptrType, one);
+    size_t ptrSize = converter->getDataLayout().getTypeSize(ptrType);
+    rewriter.create<mlir::LLVM::LifetimeStartOp>(op.getLoc(), ptrSize, alloca);
     auto nullValue = rewriter.create<mlir::LLVM::ZeroOp>(op.getLoc(), ptrType);
     rewriter.create<mlir::LLVM::StoreOp>(op.getLoc(), nullValue, alloca);
     return mlir::success();
