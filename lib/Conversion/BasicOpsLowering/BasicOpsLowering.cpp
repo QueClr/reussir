@@ -55,6 +55,20 @@ namespace reussir {
 
 namespace {
 
+template <typename Op>
+void addLifetimeOrInvariantOp(mlir::OpBuilder &rewriter, mlir::Location loc,
+                              mlir::Type type, mlir::Value value,
+                              const LLVMTypeConverter &converter) {
+#if LLVM_VERSION_MAJOR >= 22
+  // no size argument
+  rewriter.create<Op>(loc, value);
+#else
+  // size argument
+  size_t size = converter.getDataLayout().getTypeSize(type);
+  rewriter.create<Op>(loc, size, value);
+#endif
+}
+
 struct ReussirTokenAllocConversionPattern
     : public mlir::OpConversionPattern<ReussirTokenAllocOp> {
   using OpConversionPattern::OpConversionPattern;
@@ -260,8 +274,8 @@ struct ReussirRefSpilledConversionPattern
 
     // Store the value to the allocated space
     rewriter.create<mlir::LLVM::StoreOp>(loc, value, allocaOp);
-    rewriter.create<mlir::LLVM::InvariantStartOp>(
-        loc, converter->getDataLayout().getTypeSize(valueType), allocaOp);
+    addLifetimeOrInvariantOp<mlir::LLVM::InvariantStartOp>(
+        rewriter, loc, valueType, allocaOp, *converter);
 
     // Return the pointer to the allocated space
     rewriter.replaceOp(op, allocaOp);
@@ -335,8 +349,8 @@ struct ReussirRecordVariantConversionPattern
     // Allocate stack space for the struct
     auto allocaOp = rewriter.create<mlir::LLVM::AllocaOp>(
         loc, ptrType, llvmStructType, one, alignment);
-    size_t structSize = converter->getDataLayout().getTypeSize(llvmStructType);
-    rewriter.create<mlir::LLVM::LifetimeStartOp>(loc, structSize, allocaOp);
+    addLifetimeOrInvariantOp<mlir::LLVM::LifetimeStartOp>(
+        rewriter, loc, llvmStructType, allocaOp, *converter);
     // Get a pointer to the tag field (index 0) and store the tag
     auto tagPtr = rewriter.create<mlir::LLVM::GEPOp>(
         loc, ptrType, llvmStructType, allocaOp,
@@ -351,7 +365,8 @@ struct ReussirRecordVariantConversionPattern
     // Load the complete struct from the allocated space
     auto result =
         rewriter.create<mlir::LLVM::LoadOp>(loc, llvmStructType, allocaOp);
-    rewriter.create<mlir::LLVM::LifetimeEndOp>(loc, structSize, allocaOp);
+    addLifetimeOrInvariantOp<mlir::LLVM::LifetimeEndOp>(
+        rewriter, loc, llvmStructType, allocaOp, *converter);
     rewriter.replaceOp(op, result);
     return mlir::success();
   }
@@ -880,10 +895,9 @@ struct ReussirRegionCleanupOpConversionPattern
         op, "__reussir_cleanup_region", mlir::TypeRange{},
         mlir::ValueRange{adaptor.getRegion()});
     auto ptrType = mlir::LLVM::LLVMPointerType::get(rewriter.getContext());
-    auto converter = static_cast<const LLVMTypeConverter *>(typeConverter);
-    size_t ptrSize = converter->getDataLayout().getTypeSize(ptrType);
-    rewriter.create<mlir::LLVM::LifetimeEndOp>(op.getLoc(), ptrSize,
-                                               adaptor.getRegion());
+    auto converter = static_cast<const LLVMTypeConverter *>(getTypeConverter());
+    addLifetimeOrInvariantOp<mlir::LLVM::LifetimeEndOp>(
+        rewriter, op.getLoc(), ptrType, adaptor.getRegion(), *converter);
     return mlir::success();
   }
 };
@@ -897,13 +911,13 @@ struct ReussirRegionCreateOpConversionPattern
                   mlir::ConversionPatternRewriter &rewriter) const override {
     // Call the runtime function __reussir_create_region
     auto ptrType = mlir::LLVM::LLVMPointerType::get(rewriter.getContext());
-    auto converter = static_cast<const LLVMTypeConverter *>(typeConverter);
+    auto converter = static_cast<const LLVMTypeConverter *>(getTypeConverter());
     auto one = rewriter.create<mlir::arith::ConstantOp>(
         op.getLoc(), mlir::IntegerAttr::get(converter->getIndexType(), 1));
     auto alloca = rewriter.replaceOpWithNewOp<mlir::LLVM::AllocaOp>(
         op, ptrType, ptrType, one);
-    size_t ptrSize = converter->getDataLayout().getTypeSize(ptrType);
-    rewriter.create<mlir::LLVM::LifetimeStartOp>(op.getLoc(), ptrSize, alloca);
+    addLifetimeOrInvariantOp<mlir::LLVM::LifetimeStartOp>(
+        rewriter, op.getLoc(), ptrType, alloca, *converter);
     auto nullValue = rewriter.create<mlir::LLVM::ZeroOp>(op.getLoc(), ptrType);
     rewriter.create<mlir::LLVM::StoreOp>(op.getLoc(), nullValue, alloca);
     return mlir::success();
