@@ -1,4 +1,9 @@
-// RUN: %reussir-opt --reussir-compile-polymorphic-ffi=optimized %s --reussir-lowering-basic-ops | %reussir-translate --reussir-to-llvmir | %lli --load %library_path/%reussir_rt
+// RUN: %reussir-opt --reussir-compile-polymorphic-ffi=optimized %s \
+// RUN:   -reussir-lowering-basic-ops | %reussir-translate --reussir-to-llvmir \
+// RUN:   | %opt -O3 | %llc -relocation-model=pic -filetype=obj -o %t.o
+// RUN: %cc %t.o -L%library_path -lreussir_rt \
+// RUN:   -Wl,-rpath,%library_path %extra_sys_libs -o %t.exe
+// RUN: %t.exe
 !Vecf64 = !reussir.rc<!reussir.ffi_object<"::reussir_rt::collections::vec::Vec<f64>", @__reussir_polyffi_Vec_f64_drop>>
 !VecVec64 = !reussir.rc<!reussir.ffi_object<"::reussir_rt::collections::vec::Vec<::reussir_rt::collections::vec::Vec<f64>>", @__reussir_polyffi_Vec_NestedVec_drop>>
 module {
