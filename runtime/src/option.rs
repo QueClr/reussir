@@ -24,7 +24,7 @@ impl<T> Option<T> {
         if self.tag == 0 {
             None
         } else {
-            unsafe { Some(&self.data.assume_init_ref()) }
+            unsafe { Some(self.data.assume_init_ref()) }
         }
     }
 }

@@ -1,7 +1,6 @@
 use std::{
     cell::{Cell, UnsafeCell},
     marker::PhantomData,
-    mem::ManuallyDrop,
     ptr::NonNull,
 };
 
@@ -17,7 +16,14 @@ pub struct Rc<T>(*mut RcBox<T>);
 
 // Rc without ownership
 #[repr(transparent)]
-pub struct RcRef<'a, T>(ManuallyDrop<Rc<T>>, PhantomData<&'a T>);
+pub struct RcRef<'a, T>(*const RcBox<T>, PhantomData<&'a T>);
+
+impl<'a, T> Clone for RcRef<'a, T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<'a, T> Copy for RcRef<'a, T> {}
 
 impl<T> Rc<T> {
     pub fn new(data: T) -> Self {
@@ -30,7 +36,7 @@ impl<T> Rc<T> {
     }
     // effectively performs check in debug mode and annotates nonnull in release mode
     unsafe fn get_box(&self) -> NonNull<RcBox<T>> {
-        unsafe { NonNull::new_unchecked(self.0 as *mut RcBox<T>) }
+        unsafe { NonNull::new_unchecked(self.0) }
     }
     pub fn data_ref(&self) -> &T {
         unsafe { &*self.get_box().as_ref().data.get() }
@@ -45,7 +51,7 @@ impl<T> Rc<T> {
         self.count_ref().get() == 1
     }
     pub fn as_ref<'a>(&'a self) -> RcRef<'a, T> {
-        RcRef(ManuallyDrop::new(Self(self.0)), PhantomData)
+        RcRef(self.0, PhantomData)
     }
 }
 
@@ -88,7 +94,7 @@ impl<T> std::ops::Deref for RcRef<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        self.0.data_ref()
+        unsafe { &*(*self.0).data.get() }
     }
 }
 

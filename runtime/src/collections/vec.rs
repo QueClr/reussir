@@ -6,6 +6,12 @@ type StdVec<T> = std::vec::Vec<T>;
 #[repr(transparent)]
 pub struct Vec<T: Clone>(Rc<StdVec<T>>);
 
+impl<T: Clone> Default for Vec<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T: Clone> Vec<T> {
     pub fn new() -> Self {
         Self(Rc::new(StdVec::new()))
