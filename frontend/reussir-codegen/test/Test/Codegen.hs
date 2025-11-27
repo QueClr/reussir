@@ -111,6 +111,7 @@ createSimpleModule =
                 B.LogWarning
         , C.recordInstances = []
         , C.polymorphicFFIs = []
+        , C.globals = []
         }
 
 -- Create the Tensor2x2 record type symbol
@@ -167,6 +168,7 @@ createTensor2x2Module =
                 )
             ]
         , C.polymorphicFFIs = []
+        , C.globals = []
         }
 
 -- Create matmul function: _ZN9Tensor2x2I3f64E6matmulE
@@ -746,6 +748,7 @@ createFibonacciModule =
                 B.LogWarning
         , C.recordInstances = []
         , C.polymorphicFFIs = []
+        , C.globals = []
         }
 
 codegenTests :: TestTree

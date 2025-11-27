@@ -68,6 +68,8 @@ library
         Reussir.Codegen.Type
         Reussir.Codegen.Type.Record
         Reussir.Codegen.Location
+        Reussir.Codegen.PolymorphicFFI
+        Reussir.Codegen.Global
         Reussir.Codegen
 
     -- Modules included in this library but not exported.
@@ -79,7 +81,6 @@ library
         Reussir.Codegen.Intrinsics.Math
         Reussir.Codegen.Type.Data
         Reussir.Codegen.Type.Emission
-        Reussir.Codegen.PolymorphicFFI
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:

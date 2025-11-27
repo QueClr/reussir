@@ -18,6 +18,7 @@ import Effectful.State.Static.Local qualified as E
 import Reussir.Codegen.Context (Codegen, Context (builder), TargetSpec, addTypeInstance, emitModuleEnv, runCodegenToBackend)
 import Reussir.Codegen.Context.Codegen (emptyContext)
 import Reussir.Codegen.Context.Symbol (Symbol)
+import Reussir.Codegen.Global (Global, globalCodegen)
 import Reussir.Codegen.IR (Function, functionCodegen)
 import Reussir.Codegen.PolymorphicFFI (PolymorphicFFI (..), PolymorphicFFIAttr (..), polyFFICodegen)
 import Reussir.Codegen.Type.Record (Record)
@@ -28,6 +29,7 @@ data Module = Module
     , moduleSpec :: TargetSpec
     , recordInstances :: [RecordInstance]
     , polymorphicFFIs :: [PolymorphicFFI]
+    , globals :: [Global]
     }
 
 -- | Emit a complete MLIR module with the given body.
@@ -35,6 +37,7 @@ moduleCodegen :: Module -> Codegen ()
 moduleCodegen m = do
     forM_ (recordInstances m) $ (uncurry addTypeInstance) . unRecordInstance
     emitModuleEnv $ do
+        forM_ (globals m) globalCodegen
         forM_ (polymorphicFFIs m) polyFFICodegen
         forM_ (moduleFunctions m) functionCodegen
 
