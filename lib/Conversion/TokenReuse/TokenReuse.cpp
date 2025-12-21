@@ -153,8 +153,8 @@ int hueristic(TokenProducer producer, TokenAcceptor consumer,
       while (auto variant =
                  llvm::dyn_cast_if_present<ReussirRecordVariantOp>(op))
         op = variant.getValue().getDefiningOp();
-      if (auto compound = llvm::dyn_cast_if_present<ReussirRecordCompoundOp>(
-              create.getRcPtr().getDefiningOp()))
+      if (auto compound =
+              llvm::dyn_cast_if_present<ReussirRecordCompoundOp>(op))
         fields = compound.getFields();
       for (mlir::Value field : fields) {
         if (auto loaded = llvm::dyn_cast_if_present<ReussirRefLoadOp>(
