@@ -12,9 +12,6 @@
 #include "Reussir/IR/ReussirInterfaces.h"
 #include "Reussir/IR/ReussirOps.h"
 #include "Reussir/IR/ReussirTypes.h"
-#include "immer/lock/no_lock_policy.hpp"
-#include "immer/memory_policy.hpp"
-#include "llvm/Support/raw_ostream.h"
 
 #include <bit>
 #include <cstddef>
