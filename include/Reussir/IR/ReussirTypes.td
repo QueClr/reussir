@@ -430,15 +430,11 @@ def RcClosureType : Type<CPred<[{
   !::llvm::cast<::reussir::RcType>($_self).isRegional()
   }]>, "Reussir rc closure type", "::reussir::RcType">;
 
-def ReussirNullableTokenType
-    : Type<
-          /*predicate*/ Concat<
-              "[](::mlir::Type pointer) { return ",
-              SubstLeaves<"$_self", "pointer",
-                          AnyTypeOf<[ReussirTokenType]>.predicate>,
-              "; }(::llvm::cast<::reussir::NullableType>($_self).getPtrTy())">,
-          /* descr */ "Nullable Token Type",
-          /* baseType */ "::reussir::NullableType">;
+def ReussirNullableTokenType : Type<CPred<[{
+  ::llvm::isa<::reussir::NullableType>($_self) && 
+  ::llvm::isa<::reussir::TokenType>(
+    ::llvm::cast<::reussir::NullableType>($_self).getPtrTy())
+  }]>, "Reussir nullable token type", "::reussir::NullableType">;
 
 def ReussirCompoundType
     : Type<CPred<[{

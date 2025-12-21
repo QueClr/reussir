@@ -114,8 +114,6 @@ llvm::LogicalResult runIncDecCancellation(mlir::func::FuncOp func) {
       next = next->getNextNode();
     }
   }
-  func->walk(
-      [&](mlir::scf::IfOp op) { op->removeAttr(kExpandedDecrementAttr); });
   return mlir::success();
 }
 

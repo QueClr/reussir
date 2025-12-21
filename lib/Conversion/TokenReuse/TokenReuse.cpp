@@ -8,10 +8,13 @@
 
 #include "Reussir/Conversion/TokenReuse.h"
 #include "Reussir/Analysis/AliasAnalysis.h"
+#include "Reussir/Conversion/RcDecrementExpansion.h"
 #include "Reussir/IR/ReussirDialect.h"
 #include "Reussir/IR/ReussirInterfaces.h"
 #include "Reussir/IR/ReussirOps.h"
 #include "Reussir/IR/ReussirTypes.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "llvm/Support/Casting.h"
 
 #include <bit>
 #include <cstddef>
@@ -242,14 +245,19 @@ struct TokenReusePass : public impl::ReussirTokenReusePassBase<TokenReusePass> {
     }
 
     for (auto &op : region.front()) {
-      if (isa<mlir::CallOpInterface>(op) ||
-          isa<mlir::LoopLikeOpInterface>(op)) {
-        for (auto token : availableTokens)
-          frees.push_back({token, &op});
-        availableTokens = {};
-        for (auto &nestedRegion : op.getRegions())
-          oneShotTokenReuse(nestedRegion, {}, reuses, frees, aliasAnalyzer,
-                            domInfo);
+      if (isa<mlir::LoopLikeOpInterface>(op) ||
+          isa<mlir::CallOpInterface>(op)) {
+        mlir::func::CallOp funcCall = llvm::dyn_cast<mlir::func::CallOp>(op);
+        // skip intrinsic calls
+        if (!funcCall ||
+            !funcCall.getCallee().starts_with("core::intrinsic::")) {
+          for (auto token : availableTokens)
+            frees.push_back({token, &op});
+          availableTokens = {};
+          for (auto &nestedRegion : op.getRegions())
+            oneShotTokenReuse(nestedRegion, {}, reuses, frees, aliasAnalyzer,
+                              domInfo);
+        }
       } else if (auto branchOp = dyn_cast<mlir::RegionBranchOpInterface>(op)) {
         llvm::SmallVector<ValueSet> branchResults;
         for (auto &nestedRegion : op.getRegions())
@@ -276,6 +284,9 @@ struct TokenReusePass : public impl::ReussirTokenReusePassBase<TokenReusePass> {
           }
           availableTokens = intersection;
         }
+        if (auto scfIf = dyn_cast<mlir::scf::IfOp>(op))
+          if (scfIf->hasAttr(kExpandedDecrementAttr))
+            availableTokens = availableTokens.insert(scfIf.getResult(0));
       }
 
       if (auto producer = dyn_cast<TokenProducer>(op)) {

@@ -129,6 +129,8 @@ mlir::LogicalResult ReussirRcDecOp::verify() {
   }
   if (getNullableToken() == nullptr)
     return mlir::success();
+  if (!shouldProduceToken())
+    return emitOpError("this RC decrement cannot produce a token");
   NullableType nullableType = getNullableToken().getType();
   TokenType tokenType = llvm::dyn_cast<TokenType>(nullableType.getPtrTy());
   RcBoxType rcBoxType = RcType.getInnerBoxType();

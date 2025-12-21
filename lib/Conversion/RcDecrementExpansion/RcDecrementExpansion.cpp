@@ -59,8 +59,8 @@ struct RcDecrementExpansionPattern
     // No need to proceed if dec operation is applied to a rigid type.
     // Also delay the FFI object type clean up until basic ops lowering pass.
     if (type.getCapability() == Capability::rigid ||
-        mlir::isa<FFIObjectType>(type.getElementType()))
-      return mlir::success();
+        mlir::isa<FFIObjectType, ClosureType>(type.getElementType()))
+      return mlir::failure();
 
     auto prevRcCount =
         rewriter.create<ReussirRcFetchDecOp>(op.getLoc(), op.getRcPtr());

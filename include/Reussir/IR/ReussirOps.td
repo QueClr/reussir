@@ -498,7 +498,7 @@ def ReussirRecordCompoundOp : ReussirRecordOp<"compound", []> {
   let results = (outs Res<ReussirCompoundType, "Created record">:$compound);
 
   let assemblyFormat = [{
-    `(` $fields `:` type($fields) `)` `:` qualified(type($compound)) attr-dict
+    (`(` $fields^ `:` type($fields) `)`)? `:` qualified(type($compound)) attr-dict
   }];
 
   let hasVerifier = 1;

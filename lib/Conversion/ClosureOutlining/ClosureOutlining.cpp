@@ -50,12 +50,14 @@ public:
     std::stringstream ss;
     auto [high, lower] = llvm::xxh3_128bits(llvm::ArrayRef(
         reinterpret_cast<const uint8_t *>(buffer.data()), buffer.size()));
-    ss << "reussir_closure_" << std::hex << high << '_' << std::hex << lower;
+    ss << "core::intrinsic::<reussir_closure_" << std::hex << high << '_'
+       << std::hex << lower;
     std::string name = ss.str();
     if (nameOccurrences[name]++) {
-      name.append("_");
+      name.push_back('_');
       name.append(std::to_string(nameOccurrences[name]));
     }
+    name.push_back('>');
     return name;
   }
 };
@@ -109,7 +111,7 @@ void ClosureOutliningPass::runOnOperation() {
 
     // Third, create vtable operation
     rewriter.setInsertionPointToEnd(moduleOp.getBody());
-    std::string vtableName = name + "_vtable";
+    std::string vtableName = name + "::vtable";
 
     // Create the vtable operation
     mlir::FlatSymbolRefAttr dropAttr = mlir::FlatSymbolRefAttr::get(
@@ -135,7 +137,7 @@ void ClosureOutliningPass::runOnOperation() {
 mlir::func::FuncOp ClosureOutliningPass::createFunctionAndInlineRegion(
     ReussirClosureCreateOp op, llvm::Twine name, mlir::IRRewriter &rewriter) {
   mlir::OpBuilder::InsertionGuard guard(rewriter);
-  std::string invokeName = (name + "_evaluate").str();
+  std::string invokeName = (name + "::evaluate").str();
   mlir::ModuleOp moduleOp = getOperation();
   rewriter.setInsertionPointToEnd(moduleOp.getBody());
 
@@ -250,7 +252,7 @@ mlir::func::FuncOp ClosureOutliningPass::createFunctionAndInlineRegion(
 mlir::func::FuncOp ClosureOutliningPass::createClosureDropFunction(
     ReussirClosureCreateOp op, llvm::Twine name, mlir::IRRewriter &rewriter) {
   mlir::OpBuilder::InsertionGuard guard(rewriter);
-  std::string dropName = (name + "_drop").str();
+  std::string dropName = (name + "::drop").str();
   mlir::ModuleOp moduleOp = getOperation();
   rewriter.setInsertionPointToEnd(moduleOp.getBody());
   ClosureBoxType closureBoxType = op.getClosureBoxType();
@@ -355,7 +357,7 @@ mlir::func::FuncOp ClosureOutliningPass::createClosureDropFunction(
 mlir::func::FuncOp ClosureOutliningPass::createClosureCloneFunction(
     ReussirClosureCreateOp op, llvm::Twine name, mlir::IRRewriter &rewriter) {
   mlir::OpBuilder::InsertionGuard guard(rewriter);
-  std::string cloneName = (name + "_clone").str();
+  std::string cloneName = (name + "::clone").str();
   mlir::ModuleOp moduleOp = getOperation();
   rewriter.setInsertionPointToEnd(moduleOp.getBody());
   ClosureBoxType closureBoxType = op.getClosureBoxType();

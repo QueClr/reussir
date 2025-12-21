@@ -35,7 +35,10 @@ def ReussirDialect : Dialect {
       // math operations
       "mlir::math::MathDialect",
       // TBAA Tag types
-      "mlir::LLVM::LLVMDialect"];
+      "mlir::LLVM::LLVMDialect",
+      // UB Dialect
+      "mlir::ub::UBDialect",
+    ];
   let extraClassDeclaration = [{
   private:
     // Register the builtin Attributes.

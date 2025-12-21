@@ -20,6 +20,7 @@
 #include <mlir/Conversion/LLVMCommon/TypeConverter.h>
 #include <mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h>
 #include <mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h>
+#include <mlir/Conversion/UBToLLVM/UBToLLVM.h>
 #include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/Dialect/LLVMIR/LLVMAttrs.h>
@@ -180,8 +181,14 @@ struct ReussirTokenFreeConversionPattern
 
     // Get the token type and extract alignment and size
     TokenType tokenType = llvm::dyn_cast<TokenType>(op.getToken().getType());
+    if (!tokenType) {
+      auto nullableType = llvm::dyn_cast<NullableType>(op.getToken().getType());
+      if (nullableType)
+        tokenType = llvm::dyn_cast<TokenType>(nullableType.getPtrTy());
+    }
     if (!tokenType)
-      return op.emitOpError("token operand must be of TokenType");
+      return op.emitOpError(
+          "token operand must be of TokenType or NullableTokenType");
 
     uint64_t alignment = tokenType.getAlign();
     uint64_t size = tokenType.getSize();
@@ -208,8 +215,8 @@ struct ReussirTokenReinterpretConversionPattern
   mlir::LogicalResult
   matchAndRewrite(ReussirTokenReinterpretOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
-    // For reinterpret, we just use the input token directly since it's already
-    // converted to an LLVM pointer by the type converter
+    // For reinterpret, we just use the input token directly since it's
+    // already converted to an LLVM pointer by the type converter
     rewriter.replaceOp(op, adaptor.getToken());
     return mlir::success();
   }
@@ -222,8 +229,8 @@ struct ReussirRcReinterpretConversionPattern
   mlir::LogicalResult
   matchAndRewrite(ReussirRcReinterpretOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
-    // For reinterpret, we just use the input token directly since it's already
-    // converted to an LLVM pointer by the type converter
+    // For reinterpret, we just use the input token directly since it's
+    // already converted to an LLVM pointer by the type converter
     rewriter.replaceOp(op, adaptor.getRcPtr());
     return mlir::success();
   }
@@ -551,8 +558,8 @@ struct ReussirNullableCreateConversionPattern
   mlir::LogicalResult
   matchAndRewrite(ReussirNullableCreateOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
-    // Check if the operation has input. If so, replace it directly with adaptor
-    // value. Otherwise, create a new null value.
+    // Check if the operation has input. If so, replace it directly with
+    // adaptor value. Otherwise, create a new null value.
     if (op.getPtr())
       rewriter.replaceOp(op, adaptor.getPtr());
     else
@@ -583,8 +590,8 @@ struct ReussirRcIncConversionPattern
       return mlir::success();
     }
     mlir::Value refcntPtr;
-    // If inner element type is a FFI object, we do not reuse gep to expose the
-    // struct.
+    // If inner element type is a FFI object, we do not reuse gep to expose
+    // the struct.
     if (auto eleTy = mlir::dyn_cast<FFIObjectType>(rcPtrTy.getElementType())) {
       refcntPtr = adaptor.getRcPtr();
     } else {
@@ -1694,6 +1701,7 @@ struct BasicOpsLoweringPass
     mlir::populateFuncToLLVMConversionPatterns(converter, patterns);
     mlir::arith::populateArithToLLVMConversionPatterns(converter, patterns);
     mlir::cf::populateControlFlowToLLVMConversionPatterns(converter, patterns);
+    mlir::ub::populateUBToLLVMConversionPatterns(converter, patterns);
     addRuntimeFunctions(getOperation(), converter);
     target.addIllegalDialect<mlir::func::FuncDialect,
                              mlir::arith::ArithDialect>();

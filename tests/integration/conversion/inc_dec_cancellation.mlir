@@ -35,5 +35,4 @@ module attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> :
 // CHECK-BEFORE-DAG: %4 = reussir.rc.fetch_dec(%arg0 : !reussir.rc<!reussir.record<variant "List"
 
 // CHECK-AFTER-DAG: reussir.rc.inc(%3 : !reussir.rc<!reussir.record<variant "List"
-// CHECK-AFTER-NOT: {reussir.expanded_decrement}
 // CHECK-AFTER-NOT: %4 = reussir.rc.dec(%arg0 : !reussir.rc<!reussir.record<variant "List"
