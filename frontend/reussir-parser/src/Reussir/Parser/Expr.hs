@@ -10,6 +10,7 @@ import Data.Maybe
 
 import Data.Text qualified as T
 import Reussir.Parser.Lexer
+import Reussir.Parser.Type (parseType)
 import Reussir.Parser.Types
 import Reussir.Parser.Types.Expr
 
@@ -23,25 +24,6 @@ parsePattern = do
     args <- optional $ openParen *> parseIdentifier `sepBy` comma <* closeParen
 
     return (Pattern ns name (fromMaybe [] args))
-
-parseTypenameTerm :: Parser Typename
-parseTypenameTerm = do
-    prefix <- parseIdentifier
-    suffix <- optional parseTypenameParams
-
-    return (Typename prefix (fromMaybe [] suffix))
-
-parseTypenameArrow :: Parser Typename
-parseTypenameArrow = do
-    a <- parseTypenameTerm <* rightArrow
-    b <- parseTypenameTerm
-    return (Arr a b)
-
-parseTypename :: Parser Typename
-parseTypename = try parseTypenameArrow <|> parseTypenameTerm
-
-parseTypenameParams :: Parser [Typename]
-parseTypenameParams = openAngle *> parseTypename `sepBy1` comma <* closeAngle
 
 parseIf :: Parser Expr
 parseIf = do
@@ -61,14 +43,14 @@ parseLetIn = do
 
 parseFuncCall :: Parser Expr
 parseFuncCall = do
-    name <- parseIdentifier
+    name <- parsePath
     args <- openParen *> parseExpr `sepBy` comma <* closeParen
     return (FuncCall name args)
 
 parseLambda :: Parser Expr
 parseLambda = do
     name <- char '|' *> space *> parseIdentifier
-    ty <- colon *> parseTypename <* char '|' <* space
+    ty <- colon *> parseType <* char '|' <* space
     body <- parseExpr
 
     return (Lambda name ty body)
@@ -103,7 +85,7 @@ infixNOp symbol op = InfixN (string symbol *> space $> BinOpExpr op)
 
 castOp :: Operator Parser Expr
 castOp = Postfix $ do
-    ty <- string "as" *> space *> parseTypename
+    ty <- string "as" *> space *> parseType
     return (Cast ty)
 
 exprOpTable :: [[Operator Parser Expr]]
@@ -147,8 +129,11 @@ parseExprTerm =
         , parseMatch
         , try parseFuncCall
         , ConstExpr <$> parseConstant
-        , Var <$> parseIdentifier
+        , Var <$> parsePath
         ]
 
 parseExpr :: Parser Expr
-parseExpr = parseLambda <|> makeExprParser parseExprTerm exprOpTable
+parseExpr = SpannedExpr <$> withSpan parseExprInner
+
+parseExprInner :: Parser Expr
+parseExprInner = parseLambda <|> makeExprParser parseExprTerm exprOpTable
