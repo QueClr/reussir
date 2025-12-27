@@ -5,11 +5,15 @@ module Reussir.Parser.Pretty (
     PrettyColored (..),
 ) where
 
+import Data.Maybe (isJust, isNothing)
 import Prettyprinter
 import Prettyprinter.Render.Terminal
-import Reussir.Parser.Types.Expr
+import Reussir.Parser.Types.Capability
+import Reussir.Parser.Types.Expr hiding (Named, Unnamed)
+import Reussir.Parser.Types.Expr qualified as E
 import Reussir.Parser.Types.Lexer
-import Reussir.Parser.Types.Stmt
+import Reussir.Parser.Types.Stmt hiding (Named, Unnamed)
+import Reussir.Parser.Types.Stmt qualified as S
 import Reussir.Parser.Types.Type
 
 -- Helper functions for styles
@@ -89,6 +93,10 @@ instance PrettyColored Pattern where
     prettyColored (Pattern ns name args) =
         prettyColored ns <> "::" <> prettyColored name <> parens (commaSep (map prettyColored args))
 
+instance PrettyColored Access where
+    prettyColored (E.Named i) = "." <> prettyColored i
+    prettyColored (E.Unnamed i) = "." <> pretty i
+
 instance PrettyColored Expr where
     prettyColored (ConstExpr c) = prettyColored c
     prettyColored (BinOpExpr op e1 e2) = parens (prettyColored e1 <+> prettyColored op <+> prettyColored e2)
@@ -103,16 +111,28 @@ instance PrettyColored Expr where
                 <> keyword "else"
                 <> nest 4 (line <> prettyColored e3)
     prettyColored (Cast t e) = keyword "cast" <> angles (prettyColored t) <> parens (prettyColored e)
-    prettyColored (LetIn name e1 e2) =
+    prettyColored (LetIn name tyVal e1 e2) =
         group $
             keyword "let"
                 <+> prettyColored name
-                <+> operator "="
-                <+> prettyColored e1
-                <+> keyword "in"
+                <> prettyTy tyVal
+                    <+> operator "="
+                    <+> prettyColored e1
+                    <+> keyword "in"
                 <> line
                 <> prettyColored e2
-    prettyColored (FuncCall path args) = prettyColored path <> parens (commaSep (map prettyColored args))
+      where
+        prettyTy Nothing = emptyDoc
+        prettyTy (Just (t, cap)) = operator ":" <+> prettyCap cap <> prettyColored t
+        prettyCap Unspecified = emptyDoc
+        prettyCap c = brackets (prettyColored c) <> space
+    prettyColored (FuncCallExpr (FuncCall path tys args)) =
+        prettyColored path
+            <> (if null tys then mempty else angles (commaSep (map prettyTyArg tys)))
+            <> parens (commaSep (map prettyColored args))
+      where
+        prettyTyArg Nothing = "_"
+        prettyTyArg (Just t) = prettyColored t
     prettyColored (Lambda name t e) = operator "\\" <> prettyColored name <> operator ":" <+> prettyColored t <+> operator "->" <+> prettyColored e
     prettyColored (Match e cases) =
         keyword "match" <+> prettyColored e <+> braces (nest 4 (hardline <> vsep (map prettyCase cases)) <> hardline)
@@ -120,14 +140,41 @@ instance PrettyColored Expr where
         prettyCase (p, expr) = prettyColored p <+> operator "=>" <+> prettyColored expr
     prettyColored (Var path) = prettyColored path
     prettyColored (SpannedExpr w) = prettyColored (spanValue w)
+    prettyColored (RegionalExpr e) = keyword "regional" <+> braces (prettyColored e)
+    prettyColored (AccessChain e accesses) = prettyColored e <> mconcat (map prettyColored accesses)
+    prettyColored (CtorCallExpr (CtorCall path variant tys args)) =
+        prettyColored path
+            <> (if null tys then mempty else angles (commaSep (map prettyTyArg tys)))
+            <> (case variant of Nothing -> mempty; Just v -> "::" <> prettyColored v)
+            <> prettyArgs args
+      where
+        prettyTyArg Nothing = "_"
+        prettyTyArg (Just t) = prettyColored t
+
+        prettyArgs as
+            | isJust variant && null as = mempty
+            | isJust variant && all (isNothing . fst) as = parens (commaSep (map (prettyColored . snd) as))
+            | otherwise = braces (commaSep (map prettyArg as))
+
+        prettyArg (Just n, e) = prettyColored n <> colon <+> prettyColored e
+        prettyArg (Nothing, e) = prettyColored e
+
+instance PrettyColored Capability where
+    prettyColored Unspecified = emptyDoc
+    prettyColored Shared = keyword "shared"
+    prettyColored Value = keyword "value"
+    prettyColored Flex = keyword "flex"
+    prettyColored Rigid = keyword "rigid"
+    prettyColored Field = keyword "field"
 
 instance PrettyColored Visibility where
     prettyColored Public = keyword "pub" <> space
     prettyColored Private = emptyDoc
 
 instance PrettyColored Stmt where
-    prettyColored (Function vis name generics args retType body) =
+    prettyColored (FunctionStmt (Function vis name generics args retType isRegional body)) =
         prettyColored vis
+            <> (if isRegional then keyword "regional" <> space else emptyDoc)
             <> keyword "fn"
                 <+> prettyColored name
             <> prettyGenerics generics
@@ -137,18 +184,21 @@ instance PrettyColored Stmt where
       where
         prettyGenerics [] = emptyDoc
         prettyGenerics gs = angles (commaSep (map prettyColored gs))
-        prettyArg (n, t) = prettyColored n <> operator ":" <+> prettyColored t
+        prettyArg (n, t, cap) = prettyColored n <> operator ":" <+> prettyCap cap <> prettyColored t
         prettyRet Nothing = emptyDoc
-        prettyRet (Just t) = operator "->" <+> prettyColored t
-    prettyColored (RecordStmt (Record name tyParams fields kind vis)) =
+        prettyRet (Just (t, cap)) = operator "->" <+> prettyCap cap <> prettyColored t
+        prettyCap Unspecified = emptyDoc
+        prettyCap c = brackets (prettyColored c) <> space
+    prettyColored (RecordStmt (Record name tyParams fields kind vis cap)) =
         prettyColored vis
             <> keyword (case kind of StructKind -> "struct"; EnumKind -> "enum")
+            <> (case cap of Unspecified -> emptyDoc; _ -> space <> brackets (prettyColored cap))
                 <+> prettyColored name
             <> prettyGenerics tyParams
             <> case fields of
-                Unnamed fs -> parens (commaSep (map (prettyColored . fst) fs))
-                Variants vs -> braces (nest 4 (hardline <> vsep (punctuate comma (map prettyVariant vs))) <> hardline)
-                Named fs -> braces (nest 4 (hardline <> vsep (punctuate comma (map prettyField fs))) <> hardline)
+                S.Unnamed fs -> parens (commaSep (map (prettyColored . fst) fs))
+                S.Variants vs -> braces (nest 4 (hardline <> vsep (punctuate comma (map prettyVariant vs))) <> hardline)
+                S.Named fs -> braces (nest 4 (hardline <> vsep (punctuate comma (map prettyField fs))) <> hardline)
       where
         prettyGenerics [] = emptyDoc
         prettyGenerics gs = angles (commaSep (map prettyColored gs))

@@ -9,6 +9,7 @@ import Reussir.Parser.Lexer
 
 import Reussir.Parser.Type (parseType)
 import Reussir.Parser.Types
+import Reussir.Parser.Types.Capability (Capability (..))
 import Reussir.Parser.Types.Lexer (Identifier)
 import Reussir.Parser.Types.Stmt
 import Reussir.Parser.Types.Type (Type)
@@ -19,36 +20,24 @@ parseVis =
         Just () -> return Public
         Nothing -> return Private
 
-parseTypedParam :: Parser (Identifier, Type)
+parseTypedParam :: Parser (Identifier, Type, Capability)
 parseTypedParam = do
     name <- parseIdentifier <* char ':' <* space
+    cap <- parseCapability
     ty <- parseType
 
-    return (name, ty)
-
-parseCapability :: Parser Capability
-parseCapability =
-    optional (char '[' *> space *> parseCapKeyword <* char ']' <* space) >>= \case
-        Nothing -> return Unspecified
-        Just c -> return c
-
-parseCapKeyword :: Parser Capability
-parseCapKeyword =
-    choice
-        [ string "shared" >> return Shared
-        , string "value" >> return Value
-        , string "flex" >> return Flex
-        , string "rigid" >> return Rigid
-        , string "field" >> return Field
-        ]
-        <* space
+    return (name, ty, cap)
 
 parseStructDec :: Parser Stmt
-parseStructDec = do
-    vis <- parseVis
-    name <- string "struct" *> space *> parseIdentifier
+parseStructDec = parseVis >>= parseStructDecRest
+
+parseStructDecRest :: Visibility -> Parser Stmt
+parseStructDecRest vis = do
+    _ <- string "struct" *> space
+    cap <- parseCapability
+    name <- parseIdentifier
     fields <- try parseNamedFields <|> parseUnnamedFields
-    return $ RecordStmt $ Record name [] fields StructKind vis
+    return $ RecordStmt $ Record name [] fields StructKind vis cap
 
 parseUnnamedFields :: Parser RecordFields
 parseUnnamedFields = do
@@ -73,15 +62,23 @@ parseNamedField = do
     return (name, ty, cap)
 
 parseFuncDef :: Parser Stmt
-parseFuncDef = do
-    vis <- parseVis
+parseFuncDef = parseVis >>= parseFuncDefRest
+
+parseFuncDefRest :: Visibility -> Parser Stmt
+parseFuncDefRest vis = do
+    isRegional <- isJust <$> optional (string "regional" *> space)
     name <- string "fn" *> space *> parseIdentifier
     tyargs <- optional $ openAngle *> parseIdentifier `sepBy` comma <* closeAngle
     args <- openParen *> optional (parseTypedParam `sepBy` comma)
-    ret <- closeParen *> optional (string "->" *> space *> parseType)
+    ret <- closeParen *> optional (string "->" *> space *> parseRetType)
     body <- parseBody
 
-    return (Function vis name (fromMaybe [] tyargs) (fromMaybe [] args) ret body)
+    return (FunctionStmt $ Function vis name (fromMaybe [] tyargs) (fromMaybe [] args) ret isRegional body)
+  where
+    parseRetType = do
+        cap <- parseCapability
+        ty <- parseType
+        return (ty, cap)
 
 parseEnumConstructor :: Parser (Identifier, [Type])
 parseEnumConstructor = do
@@ -90,20 +87,25 @@ parseEnumConstructor = do
     return (name, fromMaybe [] tys)
 
 parseEnumDec :: Parser Stmt
-parseEnumDec = do
-    vis <- parseVis
+parseEnumDec = parseVis >>= parseEnumDecRest
+
+parseEnumDecRest :: Visibility -> Parser Stmt
+parseEnumDecRest vis = do
     name <- string "enum" *> space *> parseIdentifier
     tyvars <- openAngle *> parseIdentifier `sepBy` comma <* closeAngle
     body <- openBody *> parseEnumConstructor `sepBy` comma <* closeBody
 
     let fields = Variants body
-    return $ RecordStmt $ Record name tyvars fields EnumKind vis
+    return $ RecordStmt $ Record name tyvars fields EnumKind vis Unspecified
 
 parseStmt :: Parser Stmt
 parseStmt = SpannedStmt <$> withSpan parseStmtInner
 
 parseStmtInner :: Parser Stmt
-parseStmtInner =
-    try parseFuncDef
-        <|> try parseStructDec
-        <|> try parseEnumDec
+parseStmtInner = do
+    vis <- parseVis
+    choice
+        [ parseFuncDefRest vis <?> "function definition"
+        , parseStructDecRest vis <?> "struct declaration"
+        , parseEnumDecRest vis <?> "enum declaration"
+        ]
