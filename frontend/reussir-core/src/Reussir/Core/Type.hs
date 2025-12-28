@@ -10,19 +10,22 @@ substituteGenericOrHole ::
     Type
 substituteGenericOrHole original subst = go original
   where
-    go (TypeExpr path args) = TypeExpr path (map go args)
+    go (TypeRecord path args) = TypeRecord path (map go args)
     go (TypeIntegral it) = TypeIntegral it
     go (TypeFP fpt) = TypeFP fpt
     go TypeBool = TypeBool
     go TypeStr = TypeStr
     go TypeUnit = TypeUnit
-    go (TypeArrow a b) = TypeArrow (go a) (go b)
+    go (TypeClosure args ret) = TypeClosure (map go args) (go ret)
     go (TypeHole hole) = case subst (Right hole) of
         Just t -> t
         Nothing -> TypeHole hole
     go (TypeGeneric generic) = case subst (Left generic) of
         Just t -> t
         Nothing -> TypeGeneric generic
+    go (TypeRc t cap) = TypeRc (go t) cap
+    go (TypeRef t cap) = TypeRef (go t) cap
+    go TypeBottom = TypeBottom
 
 substituteGeneric ::
     Type ->
@@ -44,7 +47,8 @@ substituteHole original subst = substituteGenericOrHole original f
 
 -- check if a type is concrete (generic-free)
 isConcrete :: Type -> Bool
-isConcrete (TypeExpr _ args) = all isConcrete args
-isConcrete (TypeArrow t1 t2) = isConcrete t1 && isConcrete t2
+isConcrete (TypeRecord _ args) = all isConcrete args
+isConcrete (TypeClosure args ret) = all isConcrete args && isConcrete ret
 isConcrete (TypeGeneric _) = False
+isConcrete (TypeHole _) = False
 isConcrete _ = True

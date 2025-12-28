@@ -67,6 +67,9 @@ library
         Reussir.Core.Types.Generic
         Reussir.Core.Types.GenericID
         Reussir.Core.Types.Type
+        Reussir.Core.Types.Expr
+        Reussir.Core.Types.String
+        Reussir.Core.Tyck
 
     -- Modules included in this library but not exported.
     -- other-modules:
@@ -78,11 +81,15 @@ library
     build-depends:    base ^>=4.20.2.0,
                       reussir-parser,
                       reussir-diagnostic,
+                      reussir-codegen,
                       effectful,
                       text,
                       containers,
                       hashable,
-                      hashtables
+                      xxhash-ffi,
+                      scientific,
+                      hashtables,
+                      ansi-terminal-types
 
     -- Directories containing source files.
     hs-source-dirs:   src
@@ -100,6 +107,7 @@ test-suite reussir-core-test
     -- Modules included in this executable, other than Main.
     other-modules:
         Test.Reussir.Core.Generic
+        Test.Reussir.Core.Tyck
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
@@ -118,9 +126,11 @@ test-suite reussir-core-test
         base ^>=4.20.2.0,
         reussir-core,
         reussir-parser,
+        reussir-diagnostic,
         tasty,
         tasty-hunit,
         effectful,
         text,
         containers,
+        megaparsec,
         hashtables
