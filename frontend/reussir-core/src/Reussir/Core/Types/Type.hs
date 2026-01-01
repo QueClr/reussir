@@ -162,7 +162,7 @@ data RecordKind = StructKind | EnumKind deriving (Show, Eq)
 
 data Record = Record
     { recordName :: Identifier
-    , recordTyParams :: [Identifier]
+    , recordTyParams :: [(Identifier, GenericID)]
     , recordFields :: RecordFields
     , recordKind :: RecordKind
     , recordVisibility :: Visibility

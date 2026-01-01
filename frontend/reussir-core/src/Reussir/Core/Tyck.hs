@@ -9,8 +9,8 @@ import Data.HashSet qualified as HashSet
 import Data.HashTable.IO qualified as H
 import Data.Hashable (Hashable (hash))
 import Data.Int (Int64)
+import Data.IntMap.Strict qualified as IntMap
 import Data.List (elemIndex)
-import Data.Map.Strict qualified as Map
 import Data.Sequence qualified as Seq
 import Data.Text qualified as T
 import Effectful (Eff, IOE, liftIO, (:>))
@@ -21,6 +21,7 @@ import Reussir.Core.Class (addClass, isSuperClass, meetBound, newDAG, populateDA
 import Reussir.Core.Type qualified as Sem
 import Reussir.Core.Types.Class (Class (..), ClassDAG, TypeBound)
 import Reussir.Core.Types.Expr qualified as Sem
+import Reussir.Core.Types.GenericID (GenericID (..))
 import Reussir.Core.Types.String (StringToken, StringUniqifier (..))
 import Reussir.Core.Types.Type qualified as Sem
 import Reussir.Diagnostic (Label (Error), Report (..))
@@ -456,15 +457,14 @@ addRecordDefinition path record = do
     records <- State.gets knownRecords
     liftIO $ H.insert records path record
 
-substituteTypeParams :: Sem.Type -> Map.Map Identifier Sem.Type -> Sem.Type
+substituteTypeParams :: Sem.Type -> IntMap.IntMap Sem.Type -> Sem.Type
 substituteTypeParams ty subst = go ty
   where
-    go (Sem.TypeRecord path args) =
-        case pathSegments path of
-            [] -> case Map.lookup (pathBasename path) subst of
-                Just t -> t
-                Nothing -> Sem.TypeRecord path (map go args)
-            _ -> Sem.TypeRecord path (map go args)
+    go (Sem.TypeGeneric (GenericID gid)) =
+        case IntMap.lookup (fromIntegral gid) subst of
+            Just t -> t
+            Nothing -> Sem.TypeGeneric (GenericID gid)
+    go (Sem.TypeRecord path args) = Sem.TypeRecord path (map go args)
     go (Sem.TypeClosure args ret) = Sem.TypeClosure (map go args) (go ret)
     go (Sem.TypeRc t cap) = Sem.TypeRc (go t) cap
     go (Sem.TypeRef t cap) = Sem.TypeRef (go t) cap
@@ -638,7 +638,7 @@ inferType (Syn.AccessChain baseExpr projs) = do
                 mRecord <- liftIO $ H.lookup knownRecords path
                 case mRecord of
                     Just record -> do
-                        let subst = Map.fromList $ zip (Sem.recordTyParams record) args
+                        let subst = IntMap.fromList $ zip (map (\(_, GenericID gid) -> fromIntegral gid) $ Sem.recordTyParams record) args
                         case (Sem.recordFields record, access) of
                             (Sem.Named fields, Syn.Named name) -> do
                                 case elemIndex name (map (\(n, _, _) -> n) fields) of

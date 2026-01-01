@@ -19,6 +19,7 @@ import Reussir.Core.Tyck qualified as Tyck
 import Reussir.Core.Types.Class (Class (..))
 import Reussir.Core.Types.Class qualified as Sem
 import Reussir.Core.Types.Expr qualified as Sem
+import Reussir.Core.Types.GenericID (GenericID (..))
 import Reussir.Core.Types.Type qualified as Sem
 import Reussir.Diagnostic (Repository, addDummyFile, createRepository, displayReport)
 import Reussir.Parser.Expr (parseExpr)
@@ -234,11 +235,12 @@ testGenericRecordAccess :: Assertion
 testGenericRecordAccess = do
     let recordName = "Box"
     let recordPath = Path recordName []
+    let gid = GenericID 0
     let record =
             Sem.Record
                 { Sem.recordName = recordName
-                , Sem.recordTyParams = ["T"]
-                , Sem.recordFields = Sem.Named [("inner", Sem.TypeRecord (Path "T" []) [], False)]
+                , Sem.recordTyParams = [("T", gid)]
+                , Sem.recordFields = Sem.Named [("inner", Sem.TypeGeneric gid, False)]
                 , Sem.recordKind = Sem.StructKind
                 , Sem.recordVisibility = Public
                 , Sem.recordDefaultCap = Value
