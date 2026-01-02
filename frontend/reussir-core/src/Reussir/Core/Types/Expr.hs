@@ -5,7 +5,7 @@ import Data.Scientific (Scientific)
 import Reussir.Core.Types.String (StringToken)
 import Reussir.Core.Types.Type (Type)
 import Reussir.Parser.Types.Capability (Capability)
-import Reussir.Parser.Types.Lexer (Identifier)
+import Reussir.Parser.Types.Lexer (Identifier, Path)
 
 data ArithOp
     = Add
@@ -37,6 +37,11 @@ data ExprKind
         , letVarName :: Identifier
         , letVarExpr :: Expr
         , letBodyExpr :: Expr
+        }
+    | FuncCall
+        { funcCallTarget :: Path
+        , funcCallTyArgs :: [Type]
+        , funcCallArgs :: [Expr]
         }
     | Poison
     deriving (Show, Eq)
