@@ -11,7 +11,7 @@ import System.Exit (exitFailure, exitSuccess)
 import Text.Megaparsec (errorBundlePretty, runParser)
 
 import GHC.IO.Handle.FD (stderr)
-import Reussir.Core.Translation (emptyTranslationState, scanStmt)
+import Reussir.Core.Translation (emptyTranslationState, scanStmt, wellTypedExpr)
 import Reussir.Core.Tyck (checkFuncType)
 import Reussir.Core.Types.Translation (TranslationState (..))
 import Reussir.Diagnostic (createRepository, displayReport)
@@ -57,7 +57,7 @@ main = do
 
                 case targetFunc of
                     Just f -> do
-                        expr <- inject $ checkFuncType f
+                        expr <- inject $ checkFuncType f >>= wellTypedExpr
                         return (Just expr)
                     Nothing -> do
                         liftIO $ putStrLn "Function not found"
