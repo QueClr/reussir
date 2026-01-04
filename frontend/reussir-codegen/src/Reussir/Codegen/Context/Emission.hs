@@ -127,7 +127,9 @@ instance Emission Location where
             locationsInner <- mapM emitInner locations'
             let locsPart = intercalate ", " locationsInner
             case metadata' of
-                Just meta -> pure $ "fused<" <> fromString (show meta) <> ">[" <> locsPart <> "]"
+                Just meta -> do
+                    meta' <- emit meta
+                    pure $ "fused<" <> meta' <> ">[" <> locsPart <> "]"
                 Nothing -> pure $ "fused[" <> locsPart <> "]"
         emitInner UnknownLoc = pure "?"
         emitInner (NameLoc locName' childLoc') = do
