@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Reussir.Core.Translation where
@@ -12,13 +13,15 @@ import Data.Hashable (Hashable (hash))
 import Data.Int (Int64)
 import Data.IntMap.Strict qualified as IntMap
 import Data.IntSet qualified as IntSet
-import Data.Maybe (isJust)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Sequence qualified as Seq
 import Data.Text qualified as T
 import Effectful (Eff, IOE, liftIO, (:>))
+import Effectful.Log qualified as L
 import Effectful.Prim (Prim)
 import Effectful.Prim.IORef.Strict (IORef', newIORef', readIORef', writeIORef')
 import Effectful.State.Static.Local qualified as State
+import Reussir.Bridge qualified as B
 import Reussir.Core.Class (addClass, isSuperClass, meetBound, newDAG, populateDAG, subsumeBound)
 import Reussir.Core.Function (newFunctionTable)
 import Reussir.Core.Generic (
@@ -54,7 +57,7 @@ import Reussir.Parser.Types.Stmt qualified as Syn
 import Reussir.Parser.Types.Type qualified as Syn
 import System.Console.ANSI.Types qualified as ANSI
 
-type Tyck = Eff '[IOE, Prim, State.State TranslationState]
+type Tyck = Eff '[IOE, Prim, L.Log, State.State TranslationState]
 
 clearLocals :: Tyck ()
 clearLocals = do
@@ -66,16 +69,13 @@ strToToken :: (IOE :> es) => T.Text -> StringUniqifier -> Eff es StringToken
 strToToken str (StringUniqifier table) = do
     let h = hash (XXH3 str)
     bucket <- liftIO $ H.lookup table h
-    case bucket of
-        Just seqs -> case Seq.elemIndexL str seqs of
-            Just idx -> return (h, fromIntegral idx)
-            Nothing -> do
-                let newSeqs = seqs Seq.|> str
-                liftIO $ H.insert table h newSeqs
-                return (h, fromIntegral (Seq.length newSeqs - 1))
+    let seqs = fromMaybe Seq.empty bucket
+    case Seq.elemIndexL str seqs of
+        Just idx -> return (h, fromIntegral idx)
         Nothing -> do
-            liftIO $ H.insert table h (Seq.singleton str)
-            return (h, 0)
+            let newSeqs = seqs Seq.|> str
+            liftIO $ H.insert table h newSeqs
+            return (h, fromIntegral (Seq.length newSeqs - 1))
 
 withVariable :: Identifier -> Maybe (Int64, Int64) -> Sem.Type -> (Sem.VarID -> Tyck a) -> Tyck a
 withVariable varName varSpan varType cont = do
@@ -110,8 +110,7 @@ getVarType (Sem.VarID idx) = do
 lookupVar :: Identifier -> Tyck (Sem.VarID, Sem.Type)
 lookupVar varName = do
     nameMap <- State.gets variableNameMap
-    mVarID <- liftIO $ H.lookup nameMap varName
-    case mVarID of
+    liftIO (H.lookup nameMap varName) >>= \case
         Just varID -> getVarType varID >>= \ty -> pure (varID, ty)
         Nothing -> do
             reportError $ "Variable not found: " <> (unIdentifier varName)
@@ -333,8 +332,8 @@ populatePrimitives typeClassTable typeClassDAG = do
     forM_ intTypes $ \it ->
         Sem.addClassToType typeClassTable (Sem.TypeIntegral it) intClass
 
-emptyTranslationState :: (IOE :> es, Prim :> es) => FilePath -> Eff es TranslationState
-emptyTranslationState currentFile = do
+emptyTranslationState :: (IOE :> es, Prim :> es) => B.LogLevel -> FilePath -> Eff es TranslationState
+emptyTranslationState translationLogLevel currentFile = do
     table <- liftIO $ H.new
     variableNameMap <- liftIO $ H.new
     let genericNameMap = HashMap.empty
@@ -349,6 +348,7 @@ emptyTranslationState currentFile = do
         TranslationState
             { currentSpan = Nothing
             , currentFile
+            , translationLogLevel
             , stringUniqifier
             , translationReports = []
             , typeClassDAG
@@ -535,8 +535,7 @@ evalType (Syn.TypeExpr path args) = do
             return $ Sem.TypeGeneric gid
         Nothing -> do
             knownRecords <- State.gets knownRecords
-            mRecord <- liftIO $ H.lookup knownRecords path
-            case mRecord of
+            liftIO (H.lookup knownRecords path) >>= \case
                 Just record -> case Sem.recordDefaultCap record of
                     Value -> return $ Sem.TypeRecord path args'
                     Shared -> return $ Sem.TypeRc (Sem.TypeRecord path args') Shared
@@ -685,8 +684,7 @@ analyzeGenericFlowInExpr expr = do
 
             -- Analyze generic flow
             functionTable <- State.gets functions
-            mProto <- liftIO $ H.lookup (Sem.functionProtos functionTable) target
-            case mProto of
+            liftIO (H.lookup (Sem.functionProtos functionTable) target) >>= \case
                 Just proto -> do
                     let generics = Sem.funcGenerics proto
                     analyzeGenericInstantiationFlow generics tyArgs
@@ -697,8 +695,7 @@ analyzeGenericFlowInExpr expr = do
 
             -- Analyze generic flow
             knownRecords <- State.gets knownRecords
-            mRecord <- liftIO $ H.lookup knownRecords target
-            case mRecord of
+            liftIO (H.lookup knownRecords target) >>= \case
                 Just record -> do
                     let generics = Sem.recordTyParams record
                     analyzeGenericInstantiationFlow generics tyArgs
@@ -785,10 +782,10 @@ analyzeGenericFlow = do
 
 solveAllGenerics :: Tyck (Maybe GenericSolution)
 solveAllGenerics = do
+    L.logTrace_ "Solving all generics"
     analyzeGenericFlow
     genericState <- State.gets generics
-    sln <- solveGeneric genericState
-    case sln of
+    solveGeneric genericState >>= \case
         Right (x, y, ty) -> do
             -- TODO: better format report
             reportError $
@@ -799,4 +796,6 @@ solveAllGenerics = do
                     <> " via type "
                     <> T.pack (show ty)
             return Nothing
-        Left table -> return (Just table)
+        Left table -> do
+            L.logInfo_ "Generic solving succeeded"
+            return (Just table)
