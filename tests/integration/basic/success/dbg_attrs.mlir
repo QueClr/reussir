@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s --verify-roundtrip
+// RUN: %reussir-opt %s --verify-roundtrip
 module @"test" attributes {
     "reussir.test1" = #reussir.dbg_inttype< signed : true, i32, name : "i32" >,
     "reussir.test2" = #reussir.dbg_inttype< signed : false, i32, name : "u32" >,
