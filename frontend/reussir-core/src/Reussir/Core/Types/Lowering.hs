@@ -8,6 +8,7 @@ module Reussir.Core.Types.Lowering (
 import Data.Int (Int64)
 import Data.IntMap.Strict qualified as IntMap
 import Data.Sequence (Seq)
+import Data.Text qualified as T
 import Effectful (Eff, IOE)
 import Effectful.Log qualified as L
 import Effectful.Prim.IORef.Strict (Prim)
@@ -24,7 +25,9 @@ type GenericAssignment = IntMap.IntMap Sem.Type
 
 data LoweringState = LoweringState
     { currentBlock :: BlockBuilder
-    , moduleFile :: FilePath
+    , moduleBasename :: T.Text
+    , moduleDirectory :: T.Text
+    , moduleFullPath :: FilePath
     , srcRepository :: Repository
     , valueCounter :: Int64
     , varMap :: IntMap.IntMap TypedValue

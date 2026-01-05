@@ -3,6 +3,7 @@
 
 module Reussir.Core.Lowering where
 
+import Control.Exception (SomeException, try)
 import Control.Monad (forM, forM_)
 import Data.Foldable (Foldable (..))
 import Data.HashTable.IO qualified as H
@@ -11,7 +12,7 @@ import Data.IntMap.Strict qualified as IntMap
 import Data.Scientific (Scientific)
 import Data.Sequence qualified as Seq
 import Data.Text qualified as T
-import Effectful (liftIO)
+import Effectful (Eff, IOE, liftIO, (:>))
 import Effectful.Log qualified as L
 import Effectful.Prim.IORef.Strict (readIORef')
 import Effectful.State.Static.Local qualified as State
@@ -45,19 +46,29 @@ import Reussir.Core.Types.Type qualified as Sem
 import Reussir.Diagnostic.Repository (Repository, lookupRepositoryAsRange)
 import Reussir.Parser.Types.Capability qualified as SemCap
 import Reussir.Parser.Types.Lexer (Identifier (unIdentifier), Path (..))
+import System.Directory (canonicalizePath)
+import System.FilePath (takeDirectory, takeFileName)
 
-createLoweringState :: FilePath -> Repository -> IR.Module -> TranslationState -> LoweringState
-createLoweringState moduleFile repo mod' transState =
-    LoweringState
-        { currentBlock = Seq.empty
-        , moduleFile = moduleFile
-        , srcRepository = repo
-        , valueCounter = 0
-        , varMap = IntMap.empty
-        , translationState = transState
-        , genericAssignment = IntMap.empty
-        , currentModule = mod'
-        }
+createLoweringState :: (IOE :> es) => FilePath -> Repository -> IR.Module -> TranslationState -> Eff es LoweringState
+createLoweringState moduleFile repo mod' transState = do
+    (dir, base) <- liftIO $ do
+        result <- try @SomeException $ canonicalizePath moduleFile
+        case result of
+            Left _ -> pure ("<unknown>", "<unknown>")
+            Right path -> pure (T.pack $ takeDirectory path, T.pack $ takeFileName path)
+    pure
+        LoweringState
+            { currentBlock = Seq.empty
+            , moduleBasename = base
+            , moduleDirectory = dir
+            , srcRepository = repo
+            , valueCounter = 0
+            , varMap = IntMap.empty
+            , translationState = transState
+            , genericAssignment = IntMap.empty
+            , currentModule = mod'
+            , moduleFullPath = moduleFile
+            }
 
 -- TODO: currently not mangled at all
 manglePath :: Path -> T.Text
@@ -114,7 +125,8 @@ convertFloat w = error $ "Unsupported float width: " ++ show w
 
 lookupLocation :: (Int64, Int64) -> Lowering (Maybe IR.Location)
 lookupLocation (start, end) = do
-    path <- State.gets moduleFile
+    base <- State.gets moduleBasename
+    path <- State.gets moduleFullPath
     repo <- State.gets srcRepository
     case lookupRepositoryAsRange repo (path, start, end) of
         Nothing ->
@@ -125,7 +137,7 @@ lookupLocation (start, end) = do
                     ++ show start
                     ++ "-"
                     ++ show end
-        Just (a, b, c, d) -> pure $ Just $ IR.FileLineColRange (T.pack path) a b c d
+        Just (a, b, c, d) -> pure $ Just $ IR.FileLineColRange base a b c d
 
 -- span to location
 withLocation :: IR.Instr -> Maybe (Int64, Int64) -> Lowering IR.Instr

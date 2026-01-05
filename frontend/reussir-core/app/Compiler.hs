@@ -85,6 +85,7 @@ main = do
                         , optimization = argOptLevel args
                         , outputTarget = outputTarget'
                         , logLevel = argLogLevel args
+                        , moduleFilePath = argInputFile args
                         }
 
             B.withReussirLogger (argLogLevel args) "reussir-compiler" $ \logger -> do

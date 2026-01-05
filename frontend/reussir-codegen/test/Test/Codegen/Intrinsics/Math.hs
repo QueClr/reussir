@@ -24,7 +24,7 @@ import Test.Tasty.HUnit
 
 runCodegenAsText :: C.Codegen () -> IO T.Text
 runCodegenAsText codegen = do
-    let spec = C.TargetSpec "test_module" "output.mlir" B.OptDefault B.OutputObject B.LogInfo
+    let spec = C.TargetSpec "test_module" "output.mlir" B.OptDefault B.OutputObject B.LogInfo "./module.mlir"
     L.withStdOutLogger $ \logger -> do
         E.runEff $ L.runLog "Test.Codegen.Intrinsics.Math" logger defaultLogLevel $ runCodegen spec $ do
             codegen

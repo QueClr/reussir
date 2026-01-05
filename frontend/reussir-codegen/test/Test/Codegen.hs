@@ -105,7 +105,7 @@ createSimpleModule :: C.Module
 createSimpleModule =
     (emptyModule spec){C.moduleFunctions = [createAddF32Function]}
   where
-    spec = TargetSpec "test_module" "output.o" B.OptDefault B.OutputObject B.LogWarning
+    spec = TargetSpec "test_module" "output.o" B.OptDefault B.OutputObject B.LogWarning "test.rr"
 
 -- Create the Tensor2x2 record type symbol
 tensor2x2Symbol :: Symbol
@@ -157,7 +157,7 @@ createTensor2x2Module =
             ]
         }
   where
-    spec = TargetSpec "tensor_module" "tensor.o" B.OptAggressive B.OutputObject B.LogWarning
+    spec = TargetSpec "tensor_module" "tensor.o" B.OptAggressive B.OutputObject B.LogWarning "test.rr"
 
 -- Create matmul function: _ZN9Tensor2x2I3f64E6matmulE
 -- Takes two Tensor2x2, returns Tensor2x2
@@ -727,7 +727,7 @@ createFibonacciModule :: C.Module
 createFibonacciModule =
     (emptyModule spec){C.moduleFunctions = [createFibonacciFunction]}
   where
-    spec = TargetSpec "fibonacci_module" "fibonacci.o" B.OptAggressive B.OutputObject B.LogWarning
+    spec = TargetSpec "fibonacci_module" "fibonacci.o" B.OptAggressive B.OutputObject B.LogWarning "test.rr"
 
 codegenTests :: TestTree
 codegenTests =

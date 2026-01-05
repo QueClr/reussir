@@ -32,9 +32,9 @@ import Effectful.Reader.Static (Reader)
 import Effectful.State.Static.Local (State)
 import Effectful.State.Static.Local qualified as E
 import Reussir.Bridge qualified as B
+import Reussir.Codegen.Context.Symbol (Symbol)
 import Reussir.Codegen.Location (Location)
 import Reussir.Codegen.Type.Record (Record)
-import Reussir.Codegen.Context.Symbol (Symbol)
 
 data TargetSpec = TargetSpec
     { programName :: T.Text
@@ -42,6 +42,7 @@ data TargetSpec = TargetSpec
     , optimization :: B.OptOption
     , outputTarget :: B.OutputTarget
     , logLevel :: B.LogLevel
+    , moduleFilePath :: FilePath
     }
     deriving (Eq, Show)
 
