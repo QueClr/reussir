@@ -9,6 +9,7 @@
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/TypeSwitch.h>
+#include <llvm/DebugInfo/DWARF/DWARFAttribute.h>
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/Debug.h>
 #include <llvm/Support/ErrorHandling.h>
@@ -30,6 +31,7 @@
 #include <mlir/Dialect/MemRef/IR/MemRef.h>
 #include <mlir/Dialect/SCF/IR/SCF.h>
 #include <mlir/Dialect/UB/IR/UBOps.h>
+#include <mlir/IR/Attributes.h>
 #include <mlir/IR/Block.h>
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/BuiltinAttributes.h>
@@ -38,14 +40,21 @@
 #include <mlir/IR/PatternMatch.h>
 #include <mlir/IR/Value.h>
 #include <mlir/IR/ValueRange.h>
+#include <mlir/Interfaces/DataLayoutInterfaces.h>
 #include <mlir/Pass/Pass.h>
 
 #include "Reussir/Conversion/BasicOpsLowering.h"
 #include "Reussir/Conversion/TypeConverter.h"
+#include "Reussir/IR/ReussirAttrs.h"
 #include "Reussir/IR/ReussirDialect.h"
 #include "Reussir/IR/ReussirEnumAttrs.h"
 #include "Reussir/IR/ReussirOps.h"
 #include "Reussir/IR/ReussirTypes.h"
+#include "mlir/IR/Location.h"
+#include "mlir/Support/LLVM.h"
+#include "llvm/BinaryFormat/Dwarf.h"
+#include "llvm/Support/MathExtras.h"
+#include "llvm/Support/TypeSize.h"
 
 namespace reussir {
 #define GEN_PASS_DEF_REUSSIRBASICOPSLOWERINGPASS
@@ -1682,6 +1691,176 @@ void addRuntimeFunctions(mlir::ModuleOp module,
   // stacktrace. No unwinding is attempted yet.
   addRuntimeFunction(body, "__reussir_panic", {llvmPtrType, indexType}, {});
 }
+mlir::Type getUnderlyingTypeFromDbgAttr(mlir::Attribute dbgAttr) {
+  return llvm::TypeSwitch<mlir::Attribute, mlir::Type>(dbgAttr)
+      .template Case<DBGFPTypeAttr>(
+          [](DBGFPTypeAttr fptAttr) { return fptAttr.getInnerType(); })
+      .template Case<DBGIntTypeAttr>(
+          [](DBGIntTypeAttr intAttr) { return intAttr.getInnerType(); })
+      .template Case<DBGRecordTypeAttr>(
+          [](DBGRecordTypeAttr recAttr) { return recAttr.getUnderlyingType(); })
+      .Default([](auto attr) { return mlir::Type{}; });
+}
+template <typename RetType = mlir::Attribute>
+RetType translateDBGAttrToLLVM(mlir::ModuleOp moduleOp, mlir::Attribute dbgAttr,
+                               mlir::LLVM::DIFileAttr diFile,
+                               mlir::LLVM::DICompileUnitAttr diCU,
+                               mlir::func::FuncOp funcOp,
+                               mlir::LLVM::DIScopeAttr funcScope) {
+  mlir::DataLayout dataLayout{moduleOp};
+  return llvm::dyn_cast_if_present<RetType>(
+      llvm::TypeSwitch<mlir::Attribute, mlir::Attribute>(dbgAttr)
+          .template Case<DBGFPTypeAttr>([&](DBGFPTypeAttr fptAttr) {
+            auto sizeInBits =
+                dataLayout.getTypeSizeInBits(fptAttr.getInnerType());
+            return mlir::LLVM::DIBasicTypeAttr::get(
+                moduleOp.getContext(), llvm::dwarf::DW_TAG_base_type,
+                fptAttr.getDbgName(), sizeInBits, llvm::dwarf::DW_ATE_float);
+          })
+          .template Case<DBGIntTypeAttr>([&](DBGIntTypeAttr intAttr) {
+            auto sizeInBits =
+                dataLayout.getTypeSizeInBits(intAttr.getInnerType());
+            return mlir::LLVM::DIBasicTypeAttr::get(
+                moduleOp.getContext(), llvm::dwarf::DW_TAG_base_type,
+                intAttr.getDbgName(), sizeInBits,
+                intAttr.getIsSigned() ? llvm::dwarf::DW_ATE_signed
+                                      : llvm::dwarf::DW_ATE_unsigned);
+          })
+          // TODO: we ignore boxed and variant for now
+          .template Case<DBGRecordTypeAttr>([&](DBGRecordTypeAttr recAttr)
+                                                -> mlir::Attribute {
+            if (recAttr.getIsVariant())
+              return nullptr;
+            llvm::SmallVector<mlir::LLVM::DINodeAttr> members;
+            size_t currentOffset = 0;
+            for (auto element : recAttr.getMembers()) {
+              auto memberAttr = llvm::dyn_cast<DBGRecordMemberAttr>(element);
+              if (!memberAttr)
+                return nullptr;
+              auto memberTy = translateDBGAttrToLLVM<mlir::LLVM::DITypeAttr>(
+                  moduleOp, memberAttr.getTypeAttr(), diFile, diCU, funcOp,
+                  funcScope);
+              if (!memberAttr)
+                return nullptr;
+              auto memberUnderlyingTy =
+                  getUnderlyingTypeFromDbgAttr(memberAttr.getTypeAttr());
+              if (!memberUnderlyingTy)
+                return nullptr;
+              auto sizeInBits =
+                  dataLayout.getTypeSizeInBits(memberUnderlyingTy);
+              auto alignInBytes =
+                  dataLayout.getTypeABIAlignment(memberUnderlyingTy);
+              currentOffset = llvm::alignTo(currentOffset, alignInBytes);
+              // align current offset
+              members.push_back(mlir::LLVM::DIDerivedTypeAttr::get(
+                  moduleOp->getContext(), llvm::dwarf::DW_TAG_member,
+                  memberAttr.getName(), memberTy, sizeInBits, alignInBytes * 8,
+                  currentOffset * 8,
+                  /*address space=*/0, /*extraData=*/nullptr));
+              currentOffset += sizeInBits / 8;
+            }
+            auto sizeInBits =
+                dataLayout.getTypeSizeInBits(recAttr.getUnderlyingType());
+            auto alignInBits =
+                dataLayout.getTypeABIAlignment(recAttr.getUnderlyingType()) * 8;
+            auto emptyExpr =
+                mlir::LLVM::DIExpressionAttr::get(moduleOp.getContext(), {});
+            return mlir::LLVM::DICompositeTypeAttr::get(
+                moduleOp.getContext(), llvm::dwarf::DW_TAG_class_type,
+                recAttr.getDbgName(), /*file=*/diFile, /*line=*/0, diCU,
+                /*baseType=*/nullptr, /*flags=*/mlir::LLVM::DIFlags::Zero,
+                sizeInBits, alignInBits, members, emptyExpr, emptyExpr,
+                emptyExpr, emptyExpr);
+          })
+          .template Case<DBGSubprogramAttr>(
+              [&](DBGSubprogramAttr spAttr) -> mlir::Attribute {
+                auto linkageName = funcOp.getSymNameAttr();
+                llvm::SmallVector<mlir::LLVM::DINodeAttr> argTypes;
+                for (auto paramAttr : spAttr.getTypeParams()) {
+                  auto paramTy = translateDBGAttrToLLVM<mlir::LLVM::DITypeAttr>(
+                      moduleOp, paramAttr, diFile, diCU, funcOp, funcScope);
+                  if (!paramTy)
+                    return nullptr;
+                  argTypes.push_back(paramTy);
+                }
+                // TODO: function type is not emitted now
+                auto emptyRoutine = mlir::LLVM::DISubroutineTypeAttr::get(
+                    moduleOp.getContext(), {});
+                return mlir::LLVM::DISubprogramAttr::get(
+                    moduleOp.getContext(),
+                    mlir::DistinctAttr::create(
+                        mlir::UnitAttr::get(moduleOp.getContext())),
+                    false,
+                    mlir::DistinctAttr::create(
+                        mlir::UnitAttr::get(moduleOp.getContext())),
+                    diCU, diFile, spAttr.getRawName(), linkageName, diFile, 0,
+                    0, mlir::LLVM::DISubprogramFlags::Definition, emptyRoutine,
+                    {}, {});
+              })
+          .template Case<DBGLocalVarAttr>(
+              [&](DBGLocalVarAttr localVarAttr) -> mlir::Attribute {
+                auto underlyingTy =
+                    getUnderlyingTypeFromDbgAttr(localVarAttr.getDbgType());
+                auto varType = translateDBGAttrToLLVM<mlir::LLVM::DITypeAttr>(
+                    moduleOp, localVarAttr.getDbgType(), diFile, diCU, funcOp,
+                    funcScope);
+                if (!varType)
+                  return nullptr;
+                auto scope = funcScope ? funcScope : diFile;
+                auto alignInBits =
+                    dataLayout.getTypeABIAlignment(underlyingTy) * 8;
+                return mlir::LLVM::DILocalVariableAttr::get(
+                    moduleOp.getContext(), scope, localVarAttr.getVarName(),
+                    diFile, 0, 0, alignInBits, varType,
+                    mlir::LLVM::DIFlags::Zero);
+              })
+          .Default([](auto attr) { return attr; }));
+}
+void lowerFusedDBGAttributeInLocations(mlir::ModuleOp moduleOp) {
+  auto context = moduleOp.getContext();
+  auto fileBasebame = mlir::dyn_cast_if_present<mlir::StringAttr>(
+      moduleOp->getAttr("reussir.dbg.file_basename"));
+  auto fileDirectory = mlir::dyn_cast_if_present<mlir::StringAttr>(
+      moduleOp->getAttr("reussir.dbg.file_directory"));
+  if (!fileBasebame || !fileDirectory)
+    return;
+  auto llvmDIFIleAttr =
+      mlir::LLVM::DIFileAttr::get(context, fileBasebame, fileDirectory);
+  auto dbgCompileUnitAttr = mlir::LLVM::DICompileUnitAttr::get(
+      mlir::DistinctAttr::create(mlir::UnitAttr::get(context)),
+      llvm::dwarf::DW_LANG_C_plus_plus_20, llvmDIFIleAttr,
+      mlir::StringAttr::get(context, "reussir"), true,
+      mlir::LLVM::DIEmissionKind::Full);
+  moduleOp->walk([&](mlir::func::FuncOp funcOp) {
+    mlir::LocationAttr funcLoc = funcOp->getLoc();
+    if (auto fused =
+            llvm::dyn_cast_if_present<mlir::FusedLocWith<DBGSubprogramAttr>>(
+                funcLoc)) {
+      auto subprogram = translateDBGAttrToLLVM<mlir::LLVM::DISubprogramAttr>(
+          moduleOp, fused.getMetadata(), llvmDIFIleAttr, dbgCompileUnitAttr,
+          funcOp, nullptr);
+      if (subprogram) {
+        auto updated =
+            mlir::FusedLoc::get(context, fused.getLocations(), subprogram);
+        funcOp->setLoc(updated);
+      }
+      funcOp->walk([&](mlir::Operation *op) {
+        mlir::LocationAttr opLoc = op->getLoc();
+        if (auto innerFused =
+                llvm::dyn_cast_if_present<mlir::FusedLoc>(opLoc)) {
+          auto translated = translateDBGAttrToLLVM(
+              moduleOp, innerFused.getMetadata(), llvmDIFIleAttr,
+              dbgCompileUnitAttr, funcOp, subprogram);
+          if (translated) {
+            auto updatedInnerLoc =
+                mlir::FusedLoc::get(context, fused.getLocations(), translated);
+            funcOp->setLoc(updatedInnerLoc);
+          }
+        }
+      });
+    }
+  });
+}
 } // namespace
 
 //===----------------------------------------------------------------------===//
@@ -1725,6 +1904,7 @@ struct BasicOpsLoweringPass
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
       signalPassFailure();
+    lowerFusedDBGAttributeInLocations(getOperation());
   }
 };
 } // namespace

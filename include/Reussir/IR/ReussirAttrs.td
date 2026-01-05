@@ -16,8 +16,9 @@
 include "Reussir/IR/ReussirDialect.td"
 include "mlir/IR/EnumAttr.td"
 
-class ReussirAttr<string name, string attrMnemonic, list<Trait> traits = []>
-    : AttrDef<ReussirDialect, name, traits> {
+class ReussirAttr<string name, string attrMnemonic, list<Trait> traits = [],
+  string baseCppClass = "::mlir::Attribute">
+    : AttrDef<ReussirDialect, name, traits, baseCppClass> {
   let mnemonic = attrMnemonic;
 }
 
@@ -69,5 +70,88 @@ def LS_Local : I32EnumAttrCase<"local", 1>;
 def LifeScope
     : I32EnumAttr<"LifeScope", "life scope", [LS_Global, LS_Local]> {
   let cppNamespace = "::reussir";
+}
+//===----------------------------------------------------------------------===//
+// Debug Attributes
+//===----------------------------------------------------------------------===//
+// Debug Types
+//===----------------------------------------------------------------------===//
+def Reussir_DBGIntType : ReussirAttr<"DBGIntType", "dbg_inttype"> {
+  let description = "Debug integer type attribute";
+  let parameters = (ins 
+    "::mlir::Type":$innerType, 
+    "bool":$isSigned, 
+    "::mlir::StringAttr":$dbgName);
+  let assemblyFormat = [{
+    `<` `signed` `:`  $isSigned `,` $innerType `,` `name` `:` $dbgName `>`
+  }];
+}
+def Reussir_DBGFPType : ReussirAttr<"DBGFPType", "dbg_fptype"> {
+  let description = "Debug floating point type attribute";
+  let parameters = (ins "::mlir::Type":$innerType, 
+                    "::mlir::StringAttr":$dbgName);
+  let assemblyFormat = [{
+    `<` $innerType `,` `name` `:` $dbgName `>`
+  }];
+}
+def Reussir_DBGRecordMember : ReussirAttr<"DBGRecordMember", "dbg_record_member"> {
+  let description = "Debug record type attribute";
+  let parameters = (
+    ins "::mlir::StringAttr":$name,
+    "::mlir::Attribute":$typeAttr,
+    "bool":$isMutable
+  );
+  let assemblyFormat = [{
+    `<` `name` `:` $name `,` 
+        `type` `:` $typeAttr `,` 
+        `is_mutable` `:` $isMutable 
+    `>`
+  }];
+}
+def Reussir_DBGRecordType : ReussirAttr<"DBGRecordType", "dbg_recordtype"> {
+  let description = "Debug record type attribute";
+  let parameters = (ins 
+    ArrayRefParameter<"::reussir::DBGRecordMemberAttr">:$members,
+    "bool":$isVariant,
+    "::mlir::Type":$underlyingType,
+    "::mlir::StringAttr":$dbgName
+  );
+  let assemblyFormat = [{
+    `{` 
+        `members` `:` $members `,`
+        `is_variant` `:` $isVariant `,`
+        `underlying_type` `:` $underlyingType `,`
+        `dbg_name` `:` $dbgName
+    `}`
+  }];
+}
+def Reussir_DBGSubprogram : ReussirAttr<"DBGSubprogram", "dbg_subprogram"> {
+  let description = "Debug subprogram attribute";
+  let parameters = (ins
+    "::mlir::StringAttr":$rawName,
+    ArrayRefParameter<"::mlir::Attribute">:$typeParams
+    
+  );
+  let assemblyFormat = [{
+    `<`
+        `raw_name` `:` $rawName `,`
+        `type_params` `:` $typeParams
+    `>`
+  }];
+}
+// TODO: we need to handle boxed type and generate DI expressions later on
+// For now, let's focus on basic types and unboxed record types
+def Reussir_DBGLocalVar : ReussirAttr<"DBGLocalVar", "dbg_localvar"> {
+  let description = "Debug local variable attribute";
+  let parameters = (ins
+    "::mlir::Attribute":$dbgType,
+    "::mlir::StringAttr":$varName
+  );
+  let assemblyFormat = [{
+    `<`
+        `type` `:` $dbgType `,`
+        `name` `:` $varName
+    `>`
+  }];
 }
 #endif // REUSSIR_IR_REUSSIRATTRS_TD
