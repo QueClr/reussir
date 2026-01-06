@@ -47,7 +47,7 @@ createSimpleModule :: IR.Function -> Module
 createSimpleModule function =
     (emptyModule spec){moduleFunctions = [function]}
   where
-    spec = TargetSpec "jit_module" "output.o" OptDefault OutputObject LogWarning
+    spec = TargetSpec "jit_module" "output.o" OptDefault OutputObject LogWarning "<stdin>"
 
 type NamedExpr = (String, Expr)
 

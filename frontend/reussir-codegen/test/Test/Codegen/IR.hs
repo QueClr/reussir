@@ -16,6 +16,7 @@ import Log.Backend.StandardOutput qualified as L
 import Reussir.Bridge qualified as B
 import Reussir.Codegen.Context (runCodegen)
 import Reussir.Codegen.Context qualified as C
+import Reussir.Codegen.Context.Symbol (Symbol, verifiedSymbol)
 import Reussir.Codegen.IR qualified as IR
 import Reussir.Codegen.Intrinsics qualified as I
 import Reussir.Codegen.Location qualified as Loc
@@ -23,12 +24,10 @@ import Reussir.Codegen.Type qualified as TT
 import Reussir.Codegen.Value qualified as V
 import Test.Tasty
 import Test.Tasty.HUnit
-import Reussir.Codegen.Context.Symbol (Symbol)
-import Reussir.Codegen.Context.Symbol (verifiedSymbol)
 
 runCodegenAsText :: C.Codegen () -> IO T.Text
 runCodegenAsText codegen = do
-    let spec = C.TargetSpec "test_module" "output.mlir" B.OptDefault B.OutputObject B.LogInfo
+    let spec = C.TargetSpec "test_module" "output.mlir" B.OptDefault B.OutputObject B.LogInfo "./module.mlir"
     L.withStdOutLogger $ \logger -> do
         E.runEff $ L.runLog "Test.Codegen.IR" logger defaultLogLevel $ runCodegen spec $ do
             codegen

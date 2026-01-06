@@ -8,6 +8,8 @@ module Reussir.Codegen.Context.Module (
 where
 
 -- Import Emission instances for Type
+
+import Control.Exception (SomeException, try)
 import Control.Monad (forM_)
 import Data.HashTable.IO qualified as H
 import Data.String (fromString)
@@ -32,9 +34,11 @@ import Reussir.Codegen.Context.Emission (
     Emission (emit),
     emitBuilder,
  )
+import System.Directory (canonicalizePath)
+import System.FilePath (takeDirectory, takeFileName)
 
-import Reussir.Codegen.Type.Emission (emitRecord)
 import Reussir.Codegen.Context.Symbol (symbolBuilder)
+import Reussir.Codegen.Type.Emission (emitRecord)
 
 -- | Run a Codegen action with an initial context and compile the result.
 runCodegenToBackend :: (E.IOE :> es, L.Log :> es) => TargetSpec -> Codegen () -> Eff es ()
@@ -58,7 +62,7 @@ emitTypeAlias = do
     instances <- E.gets typeInstances
     instances' <- E.liftIO $ H.toList instances
     -- Set all to pending first
-    forM_ instances' $ flip setRecordEmissionState RecordEmissionPending .  fst
+    forM_ instances' $ flip setRecordEmissionState RecordEmissionPending . fst
     -- Now emit each one
     forM_ instances' $ \(sym, record) -> do
         status <- getRecordEmissionState sym
@@ -83,7 +87,14 @@ emitModuleEnv :: Codegen () -> Codegen ()
 emitModuleEnv body = do
     emitTypeAlias
     name <- fmap (fromString . show) $ E.asks programName
-    emitBuilder $ "module @" <> name <> " {\n"
+    filePath <- E.asks moduleFilePath
+    (moduleDirectory, moduleBaseName) <- E.liftIO $ do
+        result <- try @SomeException $ canonicalizePath filePath
+        case result of
+            Left _ -> pure (mempty, mempty)
+            Right path -> pure (T.pack $ takeDirectory path, T.pack $ takeFileName path)
+    let attributes = " attributes { reussir.dbg.file_basename = " <> TB.fromText (T.show moduleBaseName) <> ", reussir.dbg.file_directory = " <> TB.fromText (T.show moduleDirectory) <> "}"
+    emitBuilder $ "module @" <> name <> attributes <> " {\n"
     incIndentation body
     emitBuilder "}\n"
     emitOutlineLocs

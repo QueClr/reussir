@@ -106,7 +106,9 @@ library
                       array,
                       ansi-terminal-types,
                       prettyprinter,
-                      prettyprinter-ansi-terminal
+                      prettyprinter-ansi-terminal,
+                      directory,
+                      filepath
 
     -- Directories containing source files.
     hs-source-dirs:   src
