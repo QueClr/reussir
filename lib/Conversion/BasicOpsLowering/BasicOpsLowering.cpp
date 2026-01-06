@@ -1839,11 +1839,11 @@ void lowerFusedDBGAttributeInLocations(mlir::ModuleOp moduleOp) {
       moduleOp->getAttr("reussir.dbg.file_directory"));
   if (!fileBasename || !fileDirectory)
     return;
-  auto llvmDIFIleAttr =
+  auto llvmDIFileAttr =
       mlir::LLVM::DIFileAttr::get(context, fileBasename, fileDirectory);
   auto dbgCompileUnitAttr = mlir::LLVM::DICompileUnitAttr::get(
       mlir::DistinctAttr::create(mlir::UnitAttr::get(context)),
-      llvm::dwarf::DW_LANG_C_plus_plus_20, llvmDIFIleAttr,
+      llvm::dwarf::DW_LANG_C_plus_plus_20, llvmDIFileAttr,
       mlir::StringAttr::get(context, "reussir"), true,
       mlir::LLVM::DIEmissionKind::Full);
   mlir::OpBuilder builder(moduleOp);
@@ -1854,7 +1854,7 @@ void lowerFusedDBGAttributeInLocations(mlir::ModuleOp moduleOp) {
                 funcLoc)) {
 
       auto subprogram = translateDBGAttrToLLVM<mlir::LLVM::DISubprogramAttr>(
-          moduleOp, fused.getMetadata(), llvmDIFIleAttr, dbgCompileUnitAttr,
+          moduleOp, fused.getMetadata(), llvmDIFileAttr, dbgCompileUnitAttr,
           funcOp, nullptr);
       if (subprogram) {
         auto updated =
@@ -1866,7 +1866,7 @@ void lowerFusedDBGAttributeInLocations(mlir::ModuleOp moduleOp) {
         if (auto innerFused =
                 llvm::dyn_cast_if_present<mlir::FusedLoc>(opLoc)) {
           auto translated = translateDBGAttrToLLVM(
-              moduleOp, innerFused.getMetadata(), llvmDIFIleAttr,
+              moduleOp, innerFused.getMetadata(), llvmDIFileAttr,
               dbgCompileUnitAttr, funcOp, subprogram);
           if (translated) {
             if (auto localVar = mlir::dyn_cast<mlir::LLVM::DILocalVariableAttr>(
