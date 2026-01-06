@@ -1833,14 +1833,14 @@ RetType translateDBGAttrToLLVM(mlir::ModuleOp moduleOp, mlir::Attribute dbgAttr,
 }
 void lowerFusedDBGAttributeInLocations(mlir::ModuleOp moduleOp) {
   auto context = moduleOp.getContext();
-  auto fileBasebame = mlir::dyn_cast_if_present<mlir::StringAttr>(
+  auto fileBasename = mlir::dyn_cast_if_present<mlir::StringAttr>(
       moduleOp->getAttr("reussir.dbg.file_basename"));
   auto fileDirectory = mlir::dyn_cast_if_present<mlir::StringAttr>(
       moduleOp->getAttr("reussir.dbg.file_directory"));
-  if (!fileBasebame || !fileDirectory)
+  if (!fileBasename || !fileDirectory)
     return;
   auto llvmDIFIleAttr =
-      mlir::LLVM::DIFileAttr::get(context, fileBasebame, fileDirectory);
+      mlir::LLVM::DIFileAttr::get(context, fileBasename, fileDirectory);
   auto dbgCompileUnitAttr = mlir::LLVM::DICompileUnitAttr::get(
       mlir::DistinctAttr::create(mlir::UnitAttr::get(context)),
       llvm::dwarf::DW_LANG_C_plus_plus_20, llvmDIFIleAttr,
