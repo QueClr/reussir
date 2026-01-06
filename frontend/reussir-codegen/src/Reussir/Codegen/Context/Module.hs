@@ -8,8 +8,9 @@ module Reussir.Codegen.Context.Module (
 where
 
 -- Import Emission instances for Type
-import Control.Monad (forM_)
+
 import Control.Exception (SomeException, try)
+import Control.Monad (forM_)
 import Data.HashTable.IO qualified as H
 import Data.String (fromString)
 import Data.Text qualified as T
@@ -19,8 +20,6 @@ import Effectful.Log qualified as L
 import Effectful.Reader.Static qualified as E
 import Effectful.State.Static.Local qualified as E
 import Reussir.Bridge qualified as B
-import System.Directory (canonicalizePath)
-import System.FilePath (takeDirectory, takeFileName)
 import Reussir.Codegen.Context.Codegen (
     Codegen,
     Context (..),
@@ -35,6 +34,8 @@ import Reussir.Codegen.Context.Emission (
     Emission (emit),
     emitBuilder,
  )
+import System.Directory (canonicalizePath)
+import System.FilePath (takeDirectory, takeFileName)
 
 import Reussir.Codegen.Context.Symbol (symbolBuilder)
 import Reussir.Codegen.Type.Emission (emitRecord)
@@ -92,7 +93,7 @@ emitModuleEnv body = do
         case result of
             Left _ -> pure (mempty, mempty)
             Right path -> pure (T.pack $ takeDirectory path, T.pack $ takeFileName path)
-    let attributes = " attributes { reussir.dbg.file_basename = \"" <> TB.fromText moduleBaseName <> "\", reussir.dbg.file_directory = \"" <> TB.fromText moduleDirectory <> "\" }\n"
+    let attributes = " attributes { reussir.dbg.file_basename = " <> TB.fromText (T.show moduleBaseName) <> ", reussir.dbg.file_directory = " <> TB.fromText (T.show moduleDirectory) <> "}"
     emitBuilder $ "module @" <> name <> attributes <> " {\n"
     incIndentation body
     emitBuilder "}\n"
