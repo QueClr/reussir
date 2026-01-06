@@ -1764,12 +1764,22 @@ RetType translateDBGAttrToLLVM(mlir::ModuleOp moduleOp, mlir::Attribute dbgAttr,
                 dataLayout.getTypeSizeInBits(recAttr.getUnderlyingType());
             auto alignInBits =
                 dataLayout.getTypeABIAlignment(recAttr.getUnderlyingType()) * 8;
+#if LLVM_VERSION_MAJOR >= 22
+            return mlir::LLVM::DICompositeTypeAttr::get(
+                moduleOp.getContext(), llvm::dwarf::DW_TAG_class_type,
+                recAttr.getDbgName(), /*file=*/diFile, /*line=*/0, diCU,
+                /*baseType=*/nullptr, /*flags=*/mlir::LLVM::DIFlags::Zero,
+                sizeInBits, alignInBits,
+                /*dataLocation=*/nullptr, /*rank=*/nullptr,
+                /*allocated=*/nullptr, /*associated=*/nullptr, members);
+#else
             return mlir::LLVM::DICompositeTypeAttr::get(
                 moduleOp.getContext(), llvm::dwarf::DW_TAG_class_type,
                 recAttr.getDbgName(), /*file=*/diFile, /*line=*/0, diCU,
                 /*baseType=*/nullptr, /*flags=*/mlir::LLVM::DIFlags::Zero,
                 sizeInBits, alignInBits, members, nullptr, nullptr, nullptr,
                 nullptr);
+#endif
           })
           .template Case<DBGSubprogramAttr>(
               [&](DBGSubprogramAttr spAttr) -> mlir::Attribute {
