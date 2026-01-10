@@ -1692,6 +1692,26 @@ void addRuntimeFunctions(mlir::ModuleOp module,
   // stacktrace. No unwinding is attempted yet.
   addRuntimeFunction(body, "__reussir_panic", {llvmPtrType, indexType}, {});
 }
+
+// Helper function to extract line and column from MLIR locations.
+// Walks through FusedLoc to find the first FileLineColLoc with valid line info.
+std::pair<unsigned, unsigned> extractLineCol(mlir::Location loc) {
+  if (auto fileLoc = llvm::dyn_cast<mlir::FileLineColLoc>(loc))
+    return {fileLoc.getLine(), fileLoc.getColumn()};
+  if (auto fusedLoc = llvm::dyn_cast<mlir::FusedLoc>(loc)) {
+    for (auto inner : fusedLoc.getLocations()) {
+      auto [line, col] = extractLineCol(inner);
+      if (line != 0)
+        return {line, col};
+    }
+  }
+  if (auto nameLoc = llvm::dyn_cast<mlir::NameLoc>(loc))
+    return extractLineCol(nameLoc.getChildLoc());
+  if (auto callSiteLoc = llvm::dyn_cast<mlir::CallSiteLoc>(loc))
+    return extractLineCol(callSiteLoc.getCallee());
+  return {0, 0};
+}
+
 mlir::Type getUnderlyingTypeFromDbgAttr(mlir::Attribute dbgAttr) {
   return llvm::TypeSwitch<mlir::Attribute, mlir::Type>(dbgAttr)
       .template Case<DBGFPTypeAttr>(
@@ -1707,7 +1727,8 @@ RetType translateDBGAttrToLLVM(mlir::ModuleOp moduleOp, mlir::Attribute dbgAttr,
                                mlir::LLVM::DIFileAttr diFile,
                                mlir::LLVM::DICompileUnitAttr diCU,
                                mlir::LLVM::LLVMFuncOp funcOp,
-                               mlir::LLVM::DIScopeAttr funcScope) {
+                               mlir::LLVM::DIScopeAttr funcScope,
+                               mlir::Location loc) {
   mlir::DataLayout dataLayout{moduleOp};
   return llvm::dyn_cast_if_present<RetType>(
       llvm::TypeSwitch<mlir::Attribute, mlir::Attribute>(dbgAttr)
@@ -1740,7 +1761,7 @@ RetType translateDBGAttrToLLVM(mlir::ModuleOp moduleOp, mlir::Attribute dbgAttr,
                 return nullptr;
               auto memberTy = translateDBGAttrToLLVM<mlir::LLVM::DITypeAttr>(
                   moduleOp, memberAttr.getTypeAttr(), diFile, diCU, funcOp,
-                  funcScope);
+                  funcScope, loc);
               if (!memberTy)
                 return nullptr;
               auto memberUnderlyingTy =
@@ -1787,7 +1808,8 @@ RetType translateDBGAttrToLLVM(mlir::ModuleOp moduleOp, mlir::Attribute dbgAttr,
                 llvm::SmallVector<mlir::LLVM::DINodeAttr> argTypes;
                 for (auto paramAttr : spAttr.getTypeParams()) {
                   auto paramTy = translateDBGAttrToLLVM<mlir::LLVM::DITypeAttr>(
-                      moduleOp, paramAttr, diFile, diCU, funcOp, funcScope);
+                      moduleOp, paramAttr, diFile, diCU, funcOp, funcScope,
+                      loc);
                   if (!paramTy)
                     return nullptr;
                   argTypes.push_back(paramTy);
@@ -1795,6 +1817,8 @@ RetType translateDBGAttrToLLVM(mlir::ModuleOp moduleOp, mlir::Attribute dbgAttr,
                 // TODO: function type is not emitted now
                 auto emptyRoutine = mlir::LLVM::DISubroutineTypeAttr::get(
                     moduleOp.getContext(), {});
+                // Extract line/column from the function's location
+                auto [line, col] = extractLineCol(loc);
                 auto res = mlir::LLVM::DISubprogramAttr::get(
                     moduleOp.getContext(),
                     mlir::DistinctAttr::create(
@@ -1802,9 +1826,9 @@ RetType translateDBGAttrToLLVM(mlir::ModuleOp moduleOp, mlir::Attribute dbgAttr,
                     false,
                     mlir::DistinctAttr::create(
                         mlir::UnitAttr::get(moduleOp.getContext())),
-                    diCU, diFile, spAttr.getRawName(), linkageName, diFile, 0,
-                    0, mlir::LLVM::DISubprogramFlags::Definition, emptyRoutine,
-                    {}, {});
+                    diCU, diFile, spAttr.getRawName(), linkageName, diFile,
+                    line, col, mlir::LLVM::DISubprogramFlags::Definition,
+                    emptyRoutine, {}, {});
 
                 return res;
               })
@@ -1814,16 +1838,42 @@ RetType translateDBGAttrToLLVM(mlir::ModuleOp moduleOp, mlir::Attribute dbgAttr,
                     getUnderlyingTypeFromDbgAttr(localVarAttr.getDbgType());
                 auto varType = translateDBGAttrToLLVM<mlir::LLVM::DITypeAttr>(
                     moduleOp, localVarAttr.getDbgType(), diFile, diCU, funcOp,
-                    funcScope);
+                    funcScope, loc);
                 if (!varType)
                   return nullptr;
                 auto scope = funcScope ? funcScope : diFile;
                 auto alignInBits =
                     dataLayout.getTypeABIAlignment(underlyingTy) * 8;
+                // Extract line/column from the operation's location
+                // Note: 5th parameter is 'arg' (argument number), not column.
+                // For local variables (not function parameters), arg should be
+                // 0.
+                auto [line, col] = extractLineCol(loc);
+                (void)col; // Column is not used in DILocalVariable
                 return mlir::LLVM::DILocalVariableAttr::get(
                     moduleOp.getContext(), scope, localVarAttr.getVarName(),
-                    diFile, 0, 0, alignInBits, varType,
+                    diFile, line, /*arg=*/0, alignInBits, varType,
                     mlir::LLVM::DIFlags::Zero);
+              })
+          .template Case<DBGFuncArgAttr>(
+              [&](DBGFuncArgAttr funcArgAttr) -> mlir::Attribute {
+                auto underlyingTy =
+                    getUnderlyingTypeFromDbgAttr(funcArgAttr.getDbgType());
+                auto varType = translateDBGAttrToLLVM<mlir::LLVM::DITypeAttr>(
+                    moduleOp, funcArgAttr.getDbgType(), diFile, diCU, funcOp,
+                    funcScope, loc);
+                if (!varType)
+                  return nullptr;
+                auto scope = funcScope ? funcScope : diFile;
+                auto alignInBits =
+                    dataLayout.getTypeABIAlignment(underlyingTy) * 8;
+                // For function arguments, use the 1-based arg index
+                auto [line, col] = extractLineCol(loc);
+                (void)col;
+                return mlir::LLVM::DILocalVariableAttr::get(
+                    moduleOp.getContext(), scope, funcArgAttr.getArgName(),
+                    diFile, line, funcArgAttr.getArgIndex(), alignInBits,
+                    varType, mlir::LLVM::DIFlags::Zero);
               })
           .Default([](auto attr) { return attr; }));
 }
@@ -1851,11 +1901,36 @@ void lowerFusedDBGAttributeInLocations(mlir::ModuleOp moduleOp) {
 
       auto subprogram = translateDBGAttrToLLVM<mlir::LLVM::DISubprogramAttr>(
           moduleOp, fused.getMetadata(), llvmDIFileAttr, dbgCompileUnitAttr,
-          funcOp, nullptr);
+          funcOp, nullptr, funcLoc);
       if (subprogram) {
         auto updated =
             mlir::FusedLoc::get(context, fused.getLocations(), subprogram);
         funcOp->setLoc(updated);
+      }
+
+      // Process function argument debug info attribute
+      // Note: Use funcOp->getLoc() which has the updated subprogram
+      auto updatedFuncLoc = funcOp->getLoc();
+      if (auto dbgFuncArgsAttr =
+              funcOp->getAttrOfType<mlir::ArrayAttr>("reussir.dbg_func_args")) {
+        for (auto [idx, argAttr] :
+             llvm::enumerate(dbgFuncArgsAttr.getValue())) {
+          if (auto funcArgAttr = mlir::dyn_cast<DBGFuncArgAttr>(argAttr)) {
+            auto translated =
+                translateDBGAttrToLLVM<mlir::LLVM::DILocalVariableAttr>(
+                    moduleOp, funcArgAttr, llvmDIFileAttr, dbgCompileUnitAttr,
+                    funcOp, subprogram, updatedFuncLoc);
+            if (translated && idx < funcOp.getNumArguments()) {
+              auto argValue = funcOp.getArgument(idx);
+              auto &entryBlock = funcOp.getBody().front();
+              builder.setInsertionPointToStart(&entryBlock);
+              builder.create<mlir::LLVM::DbgValueOp>(updatedFuncLoc, argValue,
+                                                     translated);
+            }
+          }
+        }
+        // Remove the attribute after processing
+        funcOp->removeAttr("reussir.dbg_func_args");
       }
       funcOp->walk([&](mlir::Operation *op) {
         mlir::LocationAttr opLoc = op->getLoc();
@@ -1863,7 +1938,7 @@ void lowerFusedDBGAttributeInLocations(mlir::ModuleOp moduleOp) {
                 llvm::dyn_cast_if_present<mlir::FusedLoc>(opLoc)) {
           auto translated = translateDBGAttrToLLVM(
               moduleOp, innerFused.getMetadata(), llvmDIFileAttr,
-              dbgCompileUnitAttr, funcOp, subprogram);
+              dbgCompileUnitAttr, funcOp, subprogram, opLoc);
           if (translated) {
             if (auto localVar = mlir::dyn_cast<mlir::LLVM::DILocalVariableAttr>(
                     translated)) {

@@ -24,7 +24,7 @@ import Reussir.Codegen.Global qualified as IR
 import Reussir.Codegen.IR qualified as IR
 import Reussir.Codegen.Intrinsics qualified as IR
 import Reussir.Codegen.Intrinsics.Arith qualified as Arith
-import Reussir.Codegen.Location (DBGMetaInfo (DBGLocalVar))
+import Reussir.Codegen.Location (DBGMetaInfo (DBGFuncArg, DBGLocalVar))
 import Reussir.Codegen.Location qualified as DBG
 import Reussir.Codegen.Location qualified as IR
 import Reussir.Codegen.Type (Capability)
@@ -669,6 +669,19 @@ translateFunction path proto locSpan assignment = do
 
             pure (Just block, paramValues)
 
+    -- Generate debug info for function parameters
+    let params = Sem.funcParams proto
+    let catMaybes [] = []
+        catMaybes (Just x : xs) = x : catMaybes xs
+        catMaybes (Nothing : xs) = catMaybes xs
+    dbgArgs <- case mBody of
+        Nothing -> pure []
+        Just _ -> do
+            dbgParams <- forM (zip [1 ..] params) $ \(idx, (name, ty)) -> do
+                mDbgTy <- typeAsDbgType ty
+                pure $ fmap (\dbgTy -> DBGFuncArg dbgTy (unIdentifier name) idx) mDbgTy
+            pure $ catMaybes dbgParams
+
     pure $
         IR.Function
             { IR.funcLinkage = linkage
@@ -676,6 +689,7 @@ translateFunction path proto locSpan assignment = do
             , IR.funcMLIRVisibility = mlirVis
             , IR.funcBody = bodyBlock
             , IR.funcArgs = args
+            , IR.funcDbgArgs = dbgArgs
             , IR.funcLoc = loc'
             , IR.funcResult = retTy
             , IR.funcSymbol = symbol

@@ -36,6 +36,11 @@ data DBGMetaInfo
         { dbgLocalVarTy :: DBGType
         , dbgLocalVarName :: T.Text
         }
+    | DBGFuncArg
+        { dbgFuncArgTy :: DBGType
+        , dbgFuncArgName :: T.Text
+        , dbgFuncArgIndex :: Int64 -- 1-based index
+        }
     | DBGRawMeta T.Text -- for future extension
     deriving (Show)
 

@@ -152,6 +152,9 @@ instance Emission DBGMetaInfo where
         tyParams' <- mapM emit tyParams
         let paramsBuilder = intercalate ", " tyParams'
         pure $ "#reussir.dbg_subprogram<raw_name: " <> fromString (show rawName) <> ", type_params: [" <> paramsBuilder <> "]>"
+    emit (DBGFuncArg ty name idx) = do
+        ty' <- emit ty
+        pure $ "#reussir.dbg_func_arg<type: " <> ty' <> ", name: " <> fromString (show name) <> ", index: " <> TB.fromDec idx <> ">"
 
 emitDbgInteger :: TB.Builder -> PrimitiveInt -> T.Text -> Codegen TB.Builder
 emitDbgInteger signness signlessTy name = do

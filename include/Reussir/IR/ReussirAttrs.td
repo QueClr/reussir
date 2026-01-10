@@ -152,4 +152,20 @@ def Reussir_DBGLocalVar : ReussirAttr<"DBGLocalVar", "dbg_localvar"> {
     `>`
   }];
 }
+def Reussir_DBGFuncArg : ReussirAttr<"DBGFuncArg", "dbg_func_arg"> {
+  let description = "Debug function argument attribute";
+  let parameters = (ins
+    "::mlir::Attribute":$dbgType,
+    "::mlir::StringAttr":$argName,
+    "unsigned":$argIndex
+  );
+  let assemblyFormat = [{
+    `<`
+        `type` `:` $dbgType `,`
+        `name` `:` $argName `,`
+        `index` `:` $argIndex
+    `>`
+  }];
+}
 #endif // REUSSIR_IR_REUSSIRATTRS_TD
+

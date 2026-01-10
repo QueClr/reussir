@@ -26,7 +26,7 @@ import Reussir.Codegen.Context.Codegen (Codegen, getNewBlockId, incIndentationBy
 import Reussir.Codegen.Context.Emission (emitBuilder, emitBuilderLine, emitBuilderLineM, emitLocIfPresent, intercalate)
 import Reussir.Codegen.Context.Symbol (Symbol, symbolBuilder)
 import Reussir.Codegen.Intrinsics (IntrinsicCall, intrinsicCallCodegen)
-import Reussir.Codegen.Location (Location)
+import Reussir.Codegen.Location (DBGMetaInfo, Location)
 import Reussir.Codegen.Type.Data (isBoolType, isVoidType)
 import Reussir.Codegen.Type.Data qualified as TT
 import Reussir.Codegen.Value (TypedValue)
@@ -345,6 +345,7 @@ data Function = Function
     , funcMLIRVisibility :: MLIRVisibility
     , funcBody :: Maybe Block
     , funcArgs :: [TypedValue]
+    , funcDbgArgs :: [DBGMetaInfo] -- Debug info for function arguments
     , funcLoc :: Maybe Location
     , funcResult :: TT.Type
     , funcSymbol :: Symbol
@@ -677,7 +678,13 @@ functionCodegen function = do
     unless (isVoidType result) $ do
         result' <- emit result
         emitBuilder $ " -> " <> result'
-    emitBuilder $ " attributes { llvm.linkage = " <> linkage <> ", llvm.visibility = \"" <> visibility <> "\" }"
+    -- Emit attributes including debug func args if present
+    dbgArgsAttr <- case funcDbgArgs function of
+        [] -> pure ""
+        dbgArgs -> do
+            dbgArgsEmitted <- mapM emit dbgArgs
+            pure $ ", \"reussir.dbg_func_args\" = [" <> intercalate ", " dbgArgsEmitted <> "]"
+    emitBuilder $ " attributes { llvm.linkage = " <> linkage <> ", llvm.visibility = \"" <> visibility <> "\"" <> dbgArgsAttr <> " }"
     for_ (funcBody function) $ \body -> emitBuilder " " >> blockCodegen False body
     for_ (funcLoc function) $ \loc -> withLocation loc emitLocIfPresent
     emitBuilder "\n"
