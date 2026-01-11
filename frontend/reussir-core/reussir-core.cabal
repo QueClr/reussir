@@ -112,7 +112,8 @@ library
                       directory,
                       filepath,
                       bytestring,
-                      text-builder-linear
+                      text-builder-linear,
+                      punycode
 
     -- Directories containing source files.
     hs-source-dirs:   src
