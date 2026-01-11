@@ -81,6 +81,7 @@ library
         Reussir.Core.Pretty
         Reussir.Core.Lowering
         Reussir.Core.REPL
+        Reussir.Core.Mangle
 
     -- Modules included in this library but not exported.
     -- other-modules:
@@ -110,7 +111,8 @@ library
                       prettyprinter-ansi-terminal,
                       directory,
                       filepath,
-                      bytestring
+                      bytestring,
+                      text-builder-linear
 
     -- Directories containing source files.
     hs-source-dirs:   src
@@ -129,6 +131,7 @@ test-suite reussir-core-test
     other-modules:
         Test.Reussir.Core.Class
         Test.Reussir.Core.Generic
+        Test.Reussir.Core.Mangle
         Test.Reussir.Core.Tyck
         Test.Reussir.Core.Type
 
@@ -157,6 +160,7 @@ test-suite reussir-core-test
         log-effectful,
         log-base,
         text,
+        text-builder-linear,
         containers,
         megaparsec,
         hashtables

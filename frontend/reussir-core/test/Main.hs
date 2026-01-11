@@ -2,6 +2,7 @@ module Main (main) where
 
 import Test.Reussir.Core.Class qualified as Class
 import Test.Reussir.Core.Generic qualified as Generic
+import Test.Reussir.Core.Mangle qualified as Mangle
 import Test.Reussir.Core.Tyck qualified as Tyck
 import Test.Reussir.Core.Type qualified as Type
 import Test.Tasty
@@ -19,6 +20,7 @@ tests =
             [ testCase "placeholder" $ True @?= True
             ]
         , Generic.tests
+        , Mangle.tests
         , Tyck.tests
         , Class.tests
         , Type.tests
