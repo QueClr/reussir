@@ -7,7 +7,7 @@ import Control.Exception (SomeException, try)
 import Control.Monad (forM, forM_)
 import Data.Foldable (Foldable (..))
 import Data.HashTable.IO qualified as H
-import Data.Int (Int64, Int8)
+import Data.Int (Int16, Int64)
 import Data.IntMap.Strict qualified as IntMap
 import Data.Maybe (catMaybes)
 import Data.Scientific (Scientific)
@@ -40,11 +40,27 @@ import Reussir.Core.Types.Expr qualified as Sem
 import Reussir.Core.Types.Function (FunctionProto (..), functionProtos)
 import Reussir.Core.Types.Function qualified as Sem
 import Reussir.Core.Types.GenericID (GenericID (GenericID))
-import Reussir.Core.Types.Lowering (GenericAssignment, Lowering, LoweringSpan (..), LoweringState (..), genericAssignment)
-import Reussir.Core.Types.Record (Record (recordFields), RecordFields (Named, Unnamed), recordTyParams)
+import Reussir.Core.Types.Lowering (
+    GenericAssignment,
+    Lowering,
+    LoweringSpan (..),
+    LoweringState (..),
+    genericAssignment,
+ )
+import Reussir.Core.Types.Record (
+    Record (recordFields),
+    RecordFields (Named, Unnamed),
+    recordTyParams,
+ )
 import Reussir.Core.Types.Record qualified as Sem
-import Reussir.Core.Types.String (StringToken, StringUniqifier (StringUniqifier))
-import Reussir.Core.Types.Translation (TranslationState (knownRecords, stringUniqifier), functions)
+import Reussir.Core.Types.String (
+    StringToken,
+    StringUniqifier (StringUniqifier),
+ )
+import Reussir.Core.Types.Translation (
+    TranslationState (knownRecords, stringUniqifier),
+    functions,
+ )
 import Reussir.Core.Types.Type qualified as Sem
 import Reussir.Diagnostic.Repository (Repository, lookupRepositoryAsRange)
 import Reussir.Parser.Types.Capability qualified as SemCap
@@ -76,7 +92,10 @@ typeAsDbgType ty = do
                         gids = map (\(_, GenericID gid) -> fromIntegral gid) generics
                         assignment = IntMap.fromList $ zip gids args
 
-                        subst t = substituteGeneric t (\(GenericID gid') -> IntMap.lookup (fromIntegral gid') assignment)
+                        subst t =
+                            substituteGeneric
+                                t
+                                (\(GenericID gid') -> IntMap.lookup (fromIntegral gid') assignment)
 
                         processField (name, fieldTy) = do
                             let fieldTy' = subst fieldTy
@@ -113,11 +132,12 @@ typeAsDbgType ty = do
                                         }
         _ -> pure Nothing
   where
-    convertIntegralToPrim :: Int8 -> Maybe IRType.PrimitiveInt
+    convertIntegralToPrim :: Int16 -> Maybe IRType.PrimitiveInt
     convertIntegralToPrim 8 = Just IRType.PrimInt8
     convertIntegralToPrim 16 = Just IRType.PrimInt16
     convertIntegralToPrim 32 = Just IRType.PrimInt32
     convertIntegralToPrim 64 = Just IRType.PrimInt64
+    convertIntegralToPrim 128 = Just IRType.PrimInt128
     convertIntegralToPrim _ = Nothing
 
     convertFloatToPrim :: Sem.FloatingPointType -> Maybe IRType.PrimitiveFloat
@@ -135,7 +155,9 @@ typeAsDbgType ty = do
     isNothing Nothing = True
     isNothing _ = False
 
-createLoweringState :: (IOE :> es) => FilePath -> Repository -> IR.Module -> TranslationState -> Eff es LoweringState
+createLoweringState ::
+    (IOE :> es) =>
+    FilePath -> Repository -> IR.Module -> TranslationState -> Eff es LoweringState
 createLoweringState moduleFile repo mod' transState = do
     (dir, base) <- liftIO $ do
         result <- try @SomeException $ canonicalizePath moduleFile
@@ -162,7 +184,8 @@ manglePath (Path name components) =
     T.intercalate "$$" (map unIdentifier components ++ [unIdentifier name])
 
 -- TODO: apparantly not correct, need to develop a mangle scheme
-manglePathWithTyArgs :: (HasCallStack) => Path -> [Sem.Type] -> Lowering IR.Symbol
+manglePathWithTyArgs ::
+    (HasCallStack) => Path -> [Sem.Type] -> Lowering IR.Symbol
 manglePathWithTyArgs path tyArgs = do
     instantiatedArgs <- mapM canonicalType tyArgs
     let base = manglePath path
@@ -195,18 +218,20 @@ convertType (Sem.TypeGeneric (GenericID gid)) = do
 convertType _ = error "Not yet implemented"
 
 -- TODO: fix i128, it is not parsed in frontend anyway
-convertIntegral :: Int8 -> Lowering IR.Type
+convertIntegral :: Int16 -> Lowering IR.Type
 convertIntegral 8 = pure $ IR.TypePrim (IR.PrimInt IR.PrimInt8)
 convertIntegral 16 = pure $ IR.TypePrim (IR.PrimInt IR.PrimInt16)
 convertIntegral 32 = pure $ IR.TypePrim (IR.PrimInt IR.PrimInt32)
 convertIntegral 64 = pure $ IR.TypePrim (IR.PrimInt IR.PrimInt64)
+convertIntegral 128 = pure $ IR.TypePrim (IR.PrimInt IR.PrimInt128)
 convertIntegral w = error $ "Unsupported integer width: " ++ show w
 
 -- TODO: fix f128, it is not parsed in frontend anyway
-convertFloat :: Int8 -> Lowering IR.Type
+convertFloat :: Int16 -> Lowering IR.Type
 convertFloat 16 = pure $ IR.TypePrim (IR.PrimFloat IR.PrimFloat16)
 convertFloat 32 = pure $ IR.TypePrim (IR.PrimFloat IR.PrimFloat32)
 convertFloat 64 = pure $ IR.TypePrim (IR.PrimFloat IR.PrimFloat64)
+convertFloat 128 = pure $ IR.TypePrim (IR.PrimFloat IR.PrimFloat128)
 convertFloat w = error $ "Unsupported float width: " ++ show w
 
 lookupLocation :: (Int64, Int64) -> Lowering (Maybe IR.Location)
@@ -294,10 +319,14 @@ withVar (Sem.VarID vid) val action = do
 canonicalType :: Sem.Type -> Lowering Sem.Type
 canonicalType ty = do
     assignment <- State.gets genericAssignment
-    return $ substituteGeneric ty (\(GenericID gid') -> IntMap.lookup (fromIntegral gid') assignment)
+    return $
+        substituteGeneric
+            ty
+            (\(GenericID gid') -> IntMap.lookup (fromIntegral gid') assignment)
 
 -- TODO: span information is not being used to generate debug info
-lowerExprInBlock :: Sem.ExprKind -> Sem.Type -> LoweringSpan -> Lowering IR.Value
+lowerExprInBlock ::
+    Sem.ExprKind -> Sem.Type -> LoweringSpan -> Lowering IR.Value
 lowerExprInBlock (Sem.Constant value) ty exprSpan = do
     let arithConstant = Arith.Constant value
     irType <- convertType ty
@@ -310,7 +339,12 @@ lowerExprInBlock (Sem.Not inner) ty exprSpan = do
     irType <- convertType ty
     one <- createConstant irType 1 exprSpan
     value' <- nextValue
-    let call = IR.ICall $ IR.IntrinsicCall (IR.Arith Arith.Xori) [(innerValue, irType), (one, irType)] [(value', irType)]
+    let call =
+            IR.ICall $
+                IR.IntrinsicCall
+                    (IR.Arith Arith.Xori)
+                    [(innerValue, irType), (one, irType)]
+                    [(value', irType)]
     addIRInstr call exprSpan
     pure value'
 lowerExprInBlock (Sem.Negate innerExpr) ty exprSpan = do
@@ -319,13 +353,23 @@ lowerExprInBlock (Sem.Negate innerExpr) ty exprSpan = do
     if IRType.isFloatType irType
         then do
             value' <- nextValue
-            let call = IR.ICall $ IR.IntrinsicCall (IR.Arith $ Arith.Negf $ Arith.FastMathFlag 0) [(innerValue, irType)] [(value', irType)]
+            let call =
+                    IR.ICall $
+                        IR.IntrinsicCall
+                            (IR.Arith $ Arith.Negf $ Arith.FastMathFlag 0)
+                            [(innerValue, irType)]
+                            [(value', irType)]
             addIRInstr call exprSpan
             pure value'
         else do
             zero <- createConstant irType 0 exprSpan
             value' <- nextValue
-            let call = IR.ICall $ IR.IntrinsicCall (IR.Arith $ Arith.Subi $ Arith.iofNone) [(zero, irType), (innerValue, irType)] [(value', irType)]
+            let call =
+                    IR.ICall $
+                        IR.IntrinsicCall
+                            (IR.Arith $ Arith.Subi $ Arith.iofNone)
+                            [(zero, irType), (innerValue, irType)]
+                            [(value', irType)]
             addIRInstr call exprSpan
             pure value'
 lowerExprInBlock (Sem.Arith lhs op rhs) ty exprSpan = do
@@ -357,7 +401,12 @@ lowerExprInBlock (Sem.Arith lhs op rhs) ty exprSpan = do
                 Sem.TypeIntegral (Sem.Unsigned _) -> IR.Arith Arith.Remui
                 _ -> error "Unsupported type for Mod"
     resVal <- nextValue
-    let call = IR.ICall $ IR.IntrinsicCall intrinsic [(lhsVal, irType), (rhsVal, irType)] [(resVal, irType)]
+    let call =
+            IR.ICall $
+                IR.IntrinsicCall
+                    intrinsic
+                    [(lhsVal, irType), (rhsVal, irType)]
+                    [(resVal, irType)]
     addIRInstr call exprSpan
     pure resVal
 lowerExprInBlock (Sem.Cmp lhs op rhs) ty exprSpan = do
@@ -396,7 +445,12 @@ lowerExprInBlock (Sem.Cmp lhs op rhs) ty exprSpan = do
 
     resVal <- nextValue
     irType <- convertType ty
-    let call = IR.ICall $ IR.IntrinsicCall intrinsic [(lhsVal, lhsIRTy), (rhsVal, lhsIRTy)] [(resVal, irType)]
+    let call =
+            IR.ICall $
+                IR.IntrinsicCall
+                    intrinsic
+                    [(lhsVal, lhsIRTy), (rhsVal, lhsIRTy)]
+                    [(resVal, irType)]
     addIRInstr call exprSpan
     pure resVal
 lowerExprInBlock (Sem.Cast innerExpr targetTy) _ exprSpan = do
@@ -412,7 +466,12 @@ lowerExprInBlock (Sem.Cast innerExpr targetTy) _ exprSpan = do
             (Sem.TypeIntegral _, Sem.TypeBool) -> do
                 zero <- createConstant innerIRTy 0 exprSpan
                 resVal <- nextValue
-                let call = IR.ICall $ IR.IntrinsicCall (IR.Arith $ Arith.Cmpi Arith.CINe) [(innerVal, innerIRTy), (zero, innerIRTy)] [(resVal, targetIRTy)]
+                let call =
+                        IR.ICall $
+                            IR.IntrinsicCall
+                                (IR.Arith $ Arith.Cmpi Arith.CINe)
+                                [(innerVal, innerIRTy), (zero, innerIRTy)]
+                                [(resVal, targetIRTy)]
                 addIRInstr call exprSpan
                 pure resVal
             _ -> do
@@ -440,10 +499,13 @@ lowerExprInBlock (Sem.Cast innerExpr targetTy) _ exprSpan = do
                         (Sem.TypeFP _, Sem.TypeIntegral (Sem.Signed _)) -> IR.Arith Arith.Fptosi
                         (Sem.TypeFP _, Sem.TypeIntegral (Sem.Unsigned _)) -> IR.Arith Arith.Fptoui
                         (Sem.TypeBool, Sem.TypeIntegral _) -> IR.Arith Arith.Extui
-                        _ -> error $ "Unsupported cast from " ++ show innerSemTy ++ " to " ++ show targetTy
+                        _ ->
+                            error $ "Unsupported cast from " ++ show innerSemTy ++ " to " ++ show targetTy
 
                 resVal <- nextValue
-                let call = IR.ICall $ IR.IntrinsicCall intrinsic [(innerVal, innerIRTy)] [(resVal, targetIRTy)]
+                let call =
+                        IR.ICall $
+                            IR.IntrinsicCall intrinsic [(innerVal, innerIRTy)] [(resVal, targetIRTy)]
                 addIRInstr call exprSpan
                 pure resVal
 lowerExprInBlock
@@ -461,9 +523,11 @@ lowerExprInBlock
             Just span' ->
                 maybe NoSpan (\dbgTy -> FusedSpan span' $ DBGLocalVar dbgTy (unIdentifier name))
                     <$> typeAsDbgType (Sem.exprType varExpr)
-        varValue <- lowerExprInBlock (Sem.exprKind varExpr) (Sem.exprType varExpr) varSpan'
+        varValue <-
+            lowerExprInBlock (Sem.exprKind varExpr) (Sem.exprType varExpr) varSpan'
         varIRType <- convertType (Sem.exprType varExpr)
-        withVar varID (varValue, varIRType) $ lowerExprInBlock (Sem.exprKind bodyExpr) (Sem.exprType bodyExpr) exprSpan
+        withVar varID (varValue, varIRType) $
+            lowerExprInBlock (Sem.exprKind bodyExpr) (Sem.exprType bodyExpr) exprSpan
 lowerExprInBlock (Sem.Var varID) _ _ = do
     varMap' <- State.gets varMap
     case IntMap.lookup (fromIntegral $ Sem.unVarID varID) varMap' of
@@ -586,7 +650,12 @@ lowerExprInBlock _ _ _ = error "Not yet implemented"
 --    - introduce function params as variables in the lowering state
 --    - lower the function body expression
 --    - finalize the block with a return instruction
-translateFunction :: Path -> FunctionProto -> (Int64, Int64) -> GenericAssignment -> Lowering IR.Function
+translateFunction ::
+    Path ->
+    FunctionProto ->
+    (Int64, Int64) ->
+    GenericAssignment ->
+    Lowering IR.Function
 translateFunction path proto locSpan assignment = do
     L.logTrace_ $
         "Lowering: translateFunction "
@@ -702,7 +771,8 @@ convertCapability SemCap.Regional = IRType.Regional
 -- 1. set generic assignment to the lowering state
 -- 2. translate type parameters and use path together with type params to get the symbol
 -- 3. convert record fields to name erased record fields in IR type system
-translateRecord :: Path -> Sem.Record -> GenericAssignment -> Lowering IR.RecordInstance
+translateRecord ::
+    Path -> Sem.Record -> GenericAssignment -> Lowering IR.RecordInstance
 translateRecord path record assignment = do
     L.logTrace_ $
         "Lowering: translateRecord "
@@ -773,7 +843,8 @@ translateModule gSln = do
     -- Add function per instantiation
     functionTable <- State.gets (functionProtos . functions . translationState)
     functionList <- liftIO $ H.toList functionTable
-    L.logTrace_ $ "Lowering: functions to translate=" <> T.pack (show (length functionList))
+    L.logTrace_ $
+        "Lowering: functions to translate=" <> T.pack (show (length functionList))
     forM_ functionList $ \(path, proto) -> do
         if null (funcGenerics proto)
             then do
@@ -802,7 +873,8 @@ translateModule gSln = do
                     State.modify $ \s -> s{currentModule = updatedMod}
     recordTable <- State.gets (knownRecords . translationState)
     recordList <- liftIO $ H.toList recordTable
-    L.logTrace_ $ "Lowering: records to translate=" <> T.pack (show (length recordList))
+    L.logTrace_ $
+        "Lowering: records to translate=" <> T.pack (show (length recordList))
     -- Add record instance per instantiation
     forM_ recordList $ \(path, record) -> do
         if null (recordTyParams record)

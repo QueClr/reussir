@@ -5,7 +5,7 @@ module Test.Reussir.Core.Mangle where
 import Data.Text qualified as T
 import Data.Text.Builder.Linear qualified as TB
 import Reussir.Core.Mangle
-import Reussir.Parser.Types.Lexer (Identifier (..))
+import Reussir.Parser.Types.Lexer (Identifier (..), Path (..))
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -29,6 +29,15 @@ tests =
             , testCase "ASCII with digit: 123abc -> 6_123abc" $ mangleIdent "123abc" @?= "6_123abc"
             , testCase "Unicode: gödel -> u8gdel_5qa" $ mangleIdent "gödel" @?= "u8gdel_5qa"
             ]
+        , testGroup
+            "Path encoding"
+            [ testCase "Root: example -> C7example" $
+                manglePath (Path "example" []) @?= "C7example"
+            , testCase "Nested: mycrate::example -> NvC7mycrate7example" $
+                manglePath (Path "example" ["mycrate"]) @?= "NvC7mycrate7example"
+            , testCase "Deeply nested: a::example::exampla -> NvNvC1a7example7exampla" $
+                manglePath (Path "exampla" ["a", "example"]) @?= "NvNvC1a7example7exampla"
+            ]
         ]
 
 -- | Helper to mangle B62Num and extract the text
@@ -38,3 +47,7 @@ mangleB62 = TB.runBuilder . mangle . B62Num
 -- | Helper to mangle Identifier and extract the text
 mangleIdent :: T.Text -> T.Text
 mangleIdent = TB.runBuilder . mangle . Identifier
+
+-- | Helper to mangle Path and extract the text
+manglePath :: Path -> T.Text
+manglePath = TB.runBuilder . mangle

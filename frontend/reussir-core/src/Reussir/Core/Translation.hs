@@ -22,7 +22,14 @@ import Effectful.Prim (Prim)
 import Effectful.Prim.IORef.Strict (IORef', newIORef', readIORef', writeIORef')
 import Effectful.State.Static.Local qualified as State
 import Reussir.Bridge qualified as B
-import Reussir.Core.Class (addClass, isSuperClass, meetBound, newDAG, populateDAG, subsumeBound)
+import Reussir.Core.Class (
+    addClass,
+    isSuperClass,
+    meetBound,
+    newDAG,
+    populateDAG,
+    subsumeBound,
+ )
 import Reussir.Core.Function (newFunctionTable)
 import Reussir.Core.Generic (
     addConcreteFlow,
@@ -36,7 +43,10 @@ import Reussir.Core.Type qualified as Sem
 import Reussir.Core.Types.Class (Class (..), ClassDAG, TypeBound)
 import Reussir.Core.Types.Expr qualified as Sem
 import Reussir.Core.Types.Function qualified as Sem
-import Reussir.Core.Types.Generic (GenericState (getStateRef), GenericVar (genericBounds))
+import Reussir.Core.Types.Generic (
+    GenericState (getStateRef),
+    GenericVar (genericBounds),
+ )
 import Reussir.Core.Types.GenericID (GenericID (..))
 import Reussir.Core.Types.Record qualified as Sem
 import Reussir.Core.Types.String (StringToken, StringUniqifier (..))
@@ -52,7 +62,13 @@ import Reussir.Diagnostic.Report (
  )
 import Reussir.Parser.Prog qualified as Syn
 import Reussir.Parser.Types.Capability (Capability (..))
-import Reussir.Parser.Types.Lexer (Identifier, Path (..), WithSpan (..), pathBasename, unIdentifier)
+import Reussir.Parser.Types.Lexer (
+    Identifier,
+    Path (..),
+    WithSpan (..),
+    pathBasename,
+    unIdentifier,
+ )
 import Reussir.Parser.Types.Stmt qualified as Syn
 import Reussir.Parser.Types.Type qualified as Syn
 import System.Console.ANSI.Types qualified as ANSI
@@ -77,7 +93,12 @@ strToToken str (StringUniqifier table) = do
             liftIO $ H.insert table h newSeqs
             return (h, fromIntegral (Seq.length newSeqs - 1))
 
-withVariable :: Identifier -> Maybe (Int64, Int64) -> Sem.Type -> (Sem.VarID -> Tyck a) -> Tyck a
+withVariable ::
+    Identifier ->
+    Maybe (Int64, Int64) ->
+    Sem.Type ->
+    (Sem.VarID -> Tyck a) ->
+    Tyck a
 withVariable varName varSpan varType cont = do
     varMap <- State.gets variableNameMap
     backup <- liftIO $ H.lookup varMap varName
@@ -192,10 +213,19 @@ unifyTwoHoles hID1 hID2 = do
     unifState2' <- readIORef' unifState2
     let unifRnk1 = rnkOfUnifState unifState1'
     let unifRnk2 = rnkOfUnifState unifState2'
-    let (minRnkState, minRnkStateRef, minRnk, maxRnkID, maxRnkState, maxRnkStateRef, maxRnk) =
-            if unifRnk1 <= unifRnk2
-                then (unifState1', unifState1, unifRnk1, rootID2, unifState2', unifState2, unifRnk2)
-                else (unifState2', unifState2, unifRnk2, rootID1, unifState1', unifState1, unifRnk1)
+    let ( minRnkState
+            , minRnkStateRef
+            , minRnk
+            , maxRnkID
+            , maxRnkState
+            , maxRnkStateRef
+            , maxRnk
+            ) =
+                if unifRnk1 <= unifRnk2
+                    then
+                        (unifState1', unifState1, unifRnk1, rootID2, unifState2', unifState2, unifRnk2)
+                    else
+                        (unifState2', unifState2, unifRnk2, rootID1, unifState1', unifState1, unifRnk1)
     case (minRnkState, maxRnkState) of
         (UnSolvedUFRoot _ bnds, UnSolvedUFRoot _ bnds') -> do
             let newRnk =
@@ -299,7 +329,8 @@ satisfyBounds ty bnds = do
             subsumeBound dag bounds bnds
         x -> exactTypeSatisfyBounds tyClassTable x bnds
 
-populatePrimitives :: (IOE :> es, Prim :> es) => Sem.TypeClassTable -> ClassDAG -> Eff es ()
+populatePrimitives ::
+    (IOE :> es, Prim :> es) => Sem.TypeClassTable -> ClassDAG -> Eff es ()
 populatePrimitives typeClassTable typeClassDAG = do
     let numClass = Class $ Path "Num" []
     let floatClass = Class $ Path "FloatingPoint" []
@@ -332,7 +363,8 @@ populatePrimitives typeClassTable typeClassDAG = do
     forM_ intTypes $ \it ->
         Sem.addClassToType typeClassTable (Sem.TypeIntegral it) intClass
 
-emptyTranslationState :: (IOE :> es, Prim :> es) => B.LogLevel -> FilePath -> Eff es TranslationState
+emptyTranslationState ::
+    (IOE :> es, Prim :> es) => B.LogLevel -> FilePath -> Eff es TranslationState
 emptyTranslationState translationLogLevel currentFile = do
     table <- liftIO $ H.new
     variableNameMap <- liftIO $ H.new
@@ -463,14 +495,16 @@ scanStmt
             -- TODO: handle module path
             let funcPath = Path funcName []
             functionTable <- State.gets functions
-            existed <- isJust <$> liftIO (H.lookup (Sem.functionProtos functionTable) funcPath)
+            existed <-
+                isJust <$> liftIO (H.lookup (Sem.functionProtos functionTable) funcPath)
             if existed
                 then
                     reportError $
                         "Function already defined: " <> unIdentifier funcName
                 else liftIO $ H.insert (Sem.functionProtos functionTable) funcPath proto
       where
-        translateParam :: (Identifier, Syn.Type, Syn.FlexFlag) -> Tyck (Identifier, Sem.Type)
+        translateParam ::
+            (Identifier, Syn.Type, Syn.FlexFlag) -> Tyck (Identifier, Sem.Type)
         translateParam (paramName, ty, flex) = do
             ty' <- if flex then evalTypeWithFlexivity ty True else evalType ty
             return (paramName, ty')
@@ -722,7 +756,8 @@ analyzeGenericFlowInExpr expr = do
         Sem.Constant _ -> pure ()
         Sem.Var _ -> pure ()
         Sem.Poison -> pure ()
-analyzeGenericInstantiationFlow :: [(Identifier, GenericID)] -> [Sem.Type] -> Tyck ()
+analyzeGenericInstantiationFlow ::
+    [(Identifier, GenericID)] -> [Sem.Type] -> Tyck ()
 analyzeGenericInstantiationFlow genericParams tyArgs = do
     genericState <- State.gets generics
     zipWithM_

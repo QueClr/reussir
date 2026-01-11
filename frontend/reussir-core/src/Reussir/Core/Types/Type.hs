@@ -3,7 +3,7 @@ module Reussir.Core.Types.Type where
 import Data.HashSet (HashSet)
 import Data.HashTable.IO qualified as H
 import Data.Hashable (Hashable (..))
-import Data.Int (Int8)
+import Data.Int (Int16)
 import Data.List (intercalate)
 import Reussir.Core.Types.Class
 import Reussir.Core.Types.GenericID (GenericID)
@@ -15,9 +15,9 @@ Integral types can be either signed or unsigned.
 -}
 data IntegralType
     = -- | Signed integer with specified bit width (e.g., i8, i16, i32, i64)
-      Signed {-# UNPACK #-} !Int8
+      Signed {-# UNPACK #-} !Int16
     | -- | Unsigned integer with specified bit width (e.g., u8, u16, u32, u64)
-      Unsigned {-# UNPACK #-} !Int8
+      Unsigned {-# UNPACK #-} !Int16
     deriving (Eq)
 
 instance Hashable IntegralType where
@@ -35,7 +35,7 @@ Supports IEEE floating-point formats as well as specialized formats like BFloat1
 -}
 data FloatingPointType
     = -- | IEEE floating-point with specified bit width (e.g., f16, f32, f64)
-      IEEEFloat !Int8
+      IEEEFloat !Int16
     | -- | Brain Floating Point format (16-bit) used in ML applications
       BFloat16
     | -- | 8-bit floating-point format (specification pending)
