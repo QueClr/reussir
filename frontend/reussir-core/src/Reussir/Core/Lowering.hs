@@ -35,6 +35,7 @@ import Reussir.Codegen.Type.Record qualified as IRRecord
 import Reussir.Codegen.Value (Value (Value))
 import Reussir.Codegen.Value qualified as IR
 import Reussir.Core.Generic (GenericSolution)
+import Reussir.Core.Mangle (mangleABIName)
 import Reussir.Core.Type (substituteGeneric)
 import Reussir.Core.Types.Expr qualified as Sem
 import Reussir.Core.Types.Function (FunctionProto (..), functionProtos)
@@ -87,7 +88,7 @@ typeAsDbgType ty = do
             case record of
                 Nothing -> pure Nothing
                 Just rec -> do
-                    symbol <- manglePathWithTyArgs path args
+                    let symbol = IR.verifiedSymbol $ mangleABIName (Sem.TypeRecord path args)
                     let generics = Sem.recordTyParams rec
                         gids = map (\(_, GenericID gid) -> fromIntegral gid) generics
                         assignment = IntMap.fromList $ zip gids args
@@ -178,23 +179,10 @@ createLoweringState moduleFile repo mod' transState = do
             , moduleFullPath = moduleFile
             }
 
--- TODO: currently not mangled at all
-manglePath :: Path -> T.Text
-manglePath (Path name components) =
-    T.intercalate "$$" (map unIdentifier components ++ [unIdentifier name])
-
--- TODO: apparantly not correct, need to develop a mangle scheme
-manglePathWithTyArgs ::
-    (HasCallStack) => Path -> [Sem.Type] -> Lowering IR.Symbol
-manglePathWithTyArgs path tyArgs = do
+mangleRecordSymbol :: Path -> [Sem.Type] -> Lowering IR.Symbol
+mangleRecordSymbol path tyArgs = do
     instantiatedArgs <- mapM canonicalType tyArgs
-    let base = manglePath path
-        args = T.intercalate "$" (map T.show instantiatedArgs)
-    return $
-        IR.verifiedSymbol $
-            if T.null args
-                then base
-                else base <> "$LT" <> args <> "$$GT"
+    return $ IR.verifiedSymbol $ mangleABIName (Sem.TypeRecord path instantiatedArgs)
 
 convertType :: (HasCallStack) => Sem.Type -> Lowering IR.Type
 convertType Sem.TypeBool = pure $ IR.TypePrim IR.PrimBool
@@ -209,7 +197,7 @@ convertType (Sem.TypeClosure args ret) = do
     ret' <- convertType ret
     pure $ IR.TypeClosure $ IR.Closure args' ret'
 convertType (Sem.TypeRecord path tyArgs) = do
-    symbol <- manglePathWithTyArgs path tyArgs
+    symbol <- mangleRecordSymbol path tyArgs
     pure $ IR.TypeExpr symbol
 convertType (Sem.TypeGeneric (GenericID gid)) = do
     State.gets (IntMap.lookup (fromIntegral gid) . genericAssignment) >>= \case
@@ -563,7 +551,7 @@ lowerExprInBlock Sem.Poison ty exprSpan = do
     pure value
 -- TODO: erase unit and allow zero return funcall
 lowerExprInBlock (Sem.FuncCall callee tyArgs args) ty exprSpan = do
-    calleeSymbol <- manglePathWithTyArgs callee tyArgs
+    calleeSymbol <- mangleRecordSymbol callee tyArgs
     argVals <- mapM lowerExpr args
     argTys <- mapM (convertType . Sem.exprType) args
     let typedArgs = zip argVals argTys
@@ -673,7 +661,7 @@ translateFunction path proto locSpan assignment = do
                         Nothing -> error $ "Generic ID not found in assignment: " ++ show gid
                 )
                 generics
-    symbol <- manglePathWithTyArgs path tyArgs
+    symbol <- mangleRecordSymbol path tyArgs
 
     mBody <- readIORef' (Sem.funcBody proto)
     L.logTrace_ $
@@ -791,7 +779,7 @@ translateRecord path record assignment = do
                         Nothing -> error $ "Generic ID not found in assignment: " ++ show gid
                 )
                 generics
-    symbol <- manglePathWithTyArgs path tyArgs
+    symbol <- mangleRecordSymbol path tyArgs
 
     let semKind = Sem.recordKind record
     let irKind = case semKind of

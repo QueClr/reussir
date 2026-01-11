@@ -9,11 +9,13 @@ We borrow most of the ideas from rust's v0 symbol format.
 module Reussir.Core.Mangle where
 
 import Data.Char (isAscii)
+import Data.Char qualified as C
 import Data.Text qualified as T
 import Data.Text.Builder.Linear as TB
 import Data.Text.Encoding qualified as TE
 import Data.Text.Punycode qualified as Punycode
-import Reussir.Core.Types.Type (FloatingPointType (..), IntegralType (..))
+import Reussir.Core.Types.Type (FloatingPointType (..), IntegralType (..), Type (..))
+import Reussir.Parser.Types.Capability (Capability (..))
 import Reussir.Parser.Types.Lexer
 
 class Manglable a where
@@ -100,7 +102,7 @@ instance Manglable Identifier where
 -- | Check if a Text starts with a digit
 startsWithDigitOrUnderscore :: T.Text -> Bool
 startsWithDigitOrUnderscore t = case T.uncons t of
-    Just (c, _) -> (c >= '0' && c <= '9') || c == '_'
+    Just (c, _) -> C.isDigit c || c == '_'
     Nothing -> False
 
 instance Manglable FloatingPointType where
@@ -123,3 +125,37 @@ instance Manglable IntegralType where
     mangle (Unsigned 32) = "m"
     mangle (Unsigned 64) = "y"
     mangle (Unsigned _) = error "Unsupported unsigned integer type"
+
+instance Manglable Capability where
+    mangle Flex = "C4Flex"
+    mangle Rigid = "C5Rigid"
+    mangle Shared = "C6Shared"
+    mangle Value = "C5Value"
+    mangle Unspecified = "C11Unspecified"
+    mangle Field = "C5Field"
+    mangle Regional = "C7Regional"
+
+{- | Mangle a path with type arguments
+generic-args → `I` path generic-arg+ `E`
+-}
+manglePathWithArgs :: Path -> [Either Type Capability] -> TB.Builder
+manglePathWithArgs path [] = mangle path
+manglePathWithArgs path args =
+    TB.fromChar 'I' <> mangle path <> foldMap (either mangle mangle) args <> TB.fromChar 'E'
+
+instance Manglable Type where
+    mangle (TypeIntegral it) = mangle it
+    mangle (TypeFP fpt) = mangle fpt
+    mangle TypeBool = "b"
+    mangle TypeStr = "e"
+    mangle TypeUnit = "u"
+    mangle (TypeClosure args ret) = "F" <> "K" <> mangle (Identifier "ReussirClosure") <> foldMap mangle args <> "E" <> mangle ret
+    mangle (TypeRc t cap) = manglePathWithArgs (Path "Rc" []) [Left t, Right cap]
+    mangle (TypeGeneric _) = error "Unsupported generic type in ABI mangle"
+    mangle (TypeHole _) = error "Unsupported hole type in ABI mangle"
+    mangle (TypeRef t cap) = manglePathWithArgs (Path "Ref" []) [Left t, Right cap]
+    mangle TypeBottom = "z"
+    mangle (TypeRecord path tyArgs) = manglePathWithArgs path (map Left tyArgs)
+
+mangleABIName :: (Manglable a) => a -> T.Text
+mangleABIName x = TB.runBuilder . ("_R" <>) . mangle $ x
