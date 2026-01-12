@@ -16,6 +16,7 @@ import Effectful.State.Static.Local (runState)
 import Effectful.State.Static.Local qualified as State
 import Log (LogLevel (..))
 import Log.Backend.StandardOutput qualified as L
+import Reussir.Bridge qualified as B
 import Reussir.Core.Class (subsumeBound)
 import Reussir.Core.Generic (newGenericVar)
 import Reussir.Core.Translation (Tyck, emptyTranslationState, wellTypedExpr)
@@ -33,7 +34,6 @@ import Reussir.Core.Types.Translation qualified as Tyck
 import Reussir.Core.Types.Type (IntegralType (Signed))
 import Reussir.Core.Types.Type qualified as Sem
 import Reussir.Diagnostic (Repository, addDummyFile, createRepository, displayReport)
-import Reussir.Bridge qualified as B
 import Reussir.Parser.Expr (parseExpr)
 import Reussir.Parser.Types.Capability (Capability (..))
 import Reussir.Parser.Types.Expr qualified as Syn
@@ -400,5 +400,7 @@ testGenericCtorCallEmptyTypeArgs = do
     let repo = addDummyFile repository "<dummy input>" input
 
     runTyck repo (\res -> liftIO $ Sem.exprType res @?= Sem.TypeRecord recordPath [Sem.TypeIntegral (Sem.Signed 32)]) $ do
+        state <- State.gets Tyck.generics
+        _ <- newGenericVar "T" Nothing [Path "Num" []] state
         Tyck.addRecordDefinition recordPath record
         checkType expr (Sem.TypeRecord recordPath [Sem.TypeIntegral (Sem.Signed 32)]) >>= wellTypedExpr
