@@ -24,7 +24,7 @@ stripExprSpans (FuncCallExpr (FuncCall p tys es)) = FuncCallExpr (FuncCall p tys
 stripExprSpans (Lambda n t e) = Lambda n t (stripExprSpans e)
 stripExprSpans (Match e cases) = Match (stripExprSpans e) (map (\(p, ex) -> (p, stripExprSpans ex)) cases)
 stripExprSpans (RegionalExpr e) = RegionalExpr (stripExprSpans e)
-stripExprSpans (CtorCallExpr (CtorCall p v tys args)) = CtorCallExpr (CtorCall p v tys (map (\(i, e) -> (i, stripExprSpans e)) args))
+stripExprSpans (CtorCallExpr (CtorCall p tys args)) = CtorCallExpr (CtorCall p tys (map (\(i, e) -> (i, stripExprSpans e)) args))
 stripExprSpans (AccessChain e accesses) = AccessChain (stripExprSpans e) accesses
 stripExprSpans e = e
 
@@ -98,7 +98,7 @@ spec = do
                         (Unnamed [(TypeIntegral (Signed 32), False), (TypeIntegral (Signed 32), False)])
                         StructKind
                         Private
-                        Unspecified
+                        Shared
                     )
 
         it "parses public struct" $
@@ -110,7 +110,7 @@ spec = do
                         (Unnamed [(TypeIntegral (Signed 32), False), (TypeIntegral (Signed 32), False)])
                         StructKind
                         Public
-                        Unspecified
+                        Shared
                     )
 
         it "parses named struct" $
@@ -122,7 +122,7 @@ spec = do
                         (Named [(Identifier "x", TypeIntegral (Signed 32), False), (Identifier "y", TypeIntegral (Signed 32), False)])
                         StructKind
                         Private
-                        Unspecified
+                        Shared
                     )
 
         it "parses named struct with capabilities" $
@@ -134,7 +134,7 @@ spec = do
                         (Named [(Identifier "x", TypeIntegral (Signed 32), True), (Identifier "y", TypeIntegral (Signed 32), True)])
                         StructKind
                         Private
-                        Unspecified
+                        Shared
                     )
 
         it "parses unnamed struct with capabilities" $
@@ -146,7 +146,7 @@ spec = do
                         (Unnamed [(TypeIntegral (Signed 32), True), (TypeIntegral (Signed 32), True)])
                         StructKind
                         Private
-                        Unspecified
+                        Shared
                     )
 
         it "parses struct with default capability" $
@@ -175,7 +175,7 @@ spec = do
                         )
                         EnumKind
                         Private
-                        Unspecified
+                        Shared
                     )
 
         it "parses public enum" $
@@ -191,5 +191,5 @@ spec = do
                         )
                         EnumKind
                         Public
-                        Unspecified
+                        Shared
                     )

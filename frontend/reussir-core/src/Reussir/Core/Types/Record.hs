@@ -14,7 +14,11 @@ data RecordFields
     | Variants [(Identifier, [Type])]
     deriving (Show, Eq)
 
-data RecordKind = StructKind | EnumKind deriving (Show, Eq)
+data RecordKind
+    = StructKind
+    | EnumKind
+    | EnumVariant {variantParent :: Path, variantIdx :: Int}
+    deriving (Show, Eq)
 
 data Record = Record
     { recordName :: Path

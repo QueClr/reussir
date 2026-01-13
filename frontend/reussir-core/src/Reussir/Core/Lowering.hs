@@ -595,7 +595,7 @@ lowerExprInBlock (Sem.FuncCall callee tyArgs args regional) ty exprSpan = do
     pure retVal
 -- Compound CtorCall
 -- No need to handle ty args in this level as the ty already encode enough information
-lowerExprInBlock (Sem.CtorCall _ _ Nothing args) ty exprSpan = do
+lowerExprInBlock (Sem.CompoundCall _ _ args) ty exprSpan = do
     argVals <- mapM lowerExpr args
     argTys <- mapM (convertType . Sem.exprType) args
     let typedArgs = zip argVals argTys
@@ -604,9 +604,16 @@ lowerExprInBlock (Sem.CtorCall _ _ Nothing args) ty exprSpan = do
     let instr = IR.CompoundCreate typedArgs (retVal, retTy)
     addIRInstr instr exprSpan
     pure retVal
--- Variant CtorCall: TODO, need to reword the translation from upper level
-lowerExprInBlock (Sem.CtorCall _ _ (Just _) _) _ _ =
-    error "TODO: need to rework the codegen representation"
+-- Variant CtorCall
+lowerExprInBlock (Sem.VariantCall _ _ variant arg) ty exprSpan = do
+    argVal <- lowerExpr arg
+    argTy <- convertType (Sem.exprType arg)
+    let typedArg = (argVal, argTy)
+    retTy <- convertType ty
+    retVal <- nextValue
+    let instr = IR.VariantCreate (fromIntegral variant) typedArg (retVal, retTy)
+    addIRInstr instr exprSpan
+    pure retVal
 -- Projection
 -- TODO: handle chain of projection
 lowerExprInBlock (Sem.ProjChain _ []) _ _ =
@@ -838,6 +845,7 @@ translateRecord path record assignment = do
     let irKind = case semKind of
             Sem.StructKind -> IRRecord.Compound
             Sem.EnumKind -> IRRecord.Variant
+            Sem.EnumVariant{} -> IRRecord.Compound
 
     irFields <- case (semKind, Sem.recordFields record) of
         (Sem.StructKind, Sem.Named fields) ->
@@ -855,16 +863,22 @@ translateRecord path record assignment = do
                 )
                 fields
         (Sem.EnumKind, Sem.Variants variants) ->
+            pure $
+                map
+                    ( \(name, _) ->
+                        let segments = pathBasename path : pathSegments path
+                            sym = IR.verifiedSymbol $ mangleABIName (Sem.TypeRecord (Path name segments) tyArgs)
+                         in IRRecord.RecordField (IR.TypeExpr sym) False
+                    )
+                    variants
+        (Sem.EnumVariant{}, Sem.Unnamed fields) ->
             mapM
-                ( \(_, tys) -> do
-                    irTy <- case tys of
-                        [] -> pure $ IR.TypePrim IR.PrimUnit
-                        [ty] -> convertType ty
-                        _ -> error "Multiple fields in variant not supported yet"
-                    pure $ IRRecord.RecordField irTy False -- Variants are immutable?
+                ( \(ty, mutable) -> do
+                    irTy <- convertType ty
+                    pure $ IRRecord.RecordField irTy mutable
                 )
-                variants
-        _ -> error "Mismatched record kind and fields"
+                fields
+        _ -> error $ "Mismatched record kind and fields: " ++ show semKind ++ " " ++ show (Sem.recordFields record)
 
     let irRecord =
             IRRecord.Record

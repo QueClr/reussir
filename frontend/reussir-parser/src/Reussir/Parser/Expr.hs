@@ -114,27 +114,18 @@ parsePathBasedExpr :: Parser Expr
 parsePathBasedExpr = do
     path <- parsePath
     tyArgs <- optional (try (openAngle *> parseTypeArg `sepBy` comma <* closeAngle))
-
-    isVariant <- optional doubleColon
-
-    case isVariant of
-        Just _ -> do
-            v <- parseIdentifier
-            args <- parseCtorArgs
-            return $ CtorCallExpr $ CtorCall path (Just v) (fromMaybe [] tyArgs) args
-        Nothing -> do
-            lookAheadChar <- optional (lookAhead anySingle)
-            case lookAheadChar of
-                Just '{' -> do
-                    args <- openBody *> parseCtorArg `sepBy` comma <* closeBody
-                    return $ CtorCallExpr $ CtorCall path Nothing (fromMaybe [] tyArgs) args
-                Just '(' -> do
-                    args <- openParen *> parseExpr `sepBy` comma <* closeParen
-                    return $ FuncCallExpr $ FuncCall path (fromMaybe [] tyArgs) args
-                _ -> do
-                    case tyArgs of
-                        Just ts -> return $ CtorCallExpr $ CtorCall path Nothing ts []
-                        Nothing -> return $ Var path
+    lookAheadChar <- optional (lookAhead anySingle)
+    case lookAheadChar of
+        Just '{' -> do
+            args <- openBody *> parseCtorArg `sepBy` comma <* closeBody
+            return $ CtorCallExpr $ CtorCall path (fromMaybe [] tyArgs) args
+        Just '(' -> do
+            args <- openParen *> parseExpr `sepBy` comma <* closeParen
+            return $ FuncCallExpr $ FuncCall path (fromMaybe [] tyArgs) args
+        _ -> do
+            case tyArgs of
+                Just ts -> return $ CtorCallExpr $ CtorCall path ts []
+                Nothing -> return $ Var path
 
 prefixOp :: T.Text -> UnaryOp -> Operator Parser Expr
 prefixOp symbol op = Prefix (string symbol *> space $> UnaryOpExpr op)

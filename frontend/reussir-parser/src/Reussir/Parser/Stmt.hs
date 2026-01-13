@@ -9,7 +9,7 @@ import Reussir.Parser.Lexer
 
 import Reussir.Parser.Type (parseType)
 import Reussir.Parser.Types
-import Reussir.Parser.Types.Capability (Capability (..))
+import Reussir.Parser.Types.Capability (Capability (Shared))
 import Reussir.Parser.Types.Lexer (Identifier, Path)
 import Reussir.Parser.Types.Stmt
 import Reussir.Parser.Types.Type (Type)
@@ -40,7 +40,7 @@ parseStructDec = parseVis >>= parseStructDecRest
 parseStructDecRest :: Visibility -> Parser Stmt
 parseStructDecRest vis = do
     _ <- string "struct" *> space
-    cap <- parseCapability
+    cap <- parseCapability Shared
     name <- parseIdentifier
     tyvars <- optional $ openAngle *> parseGenericParam `sepBy` comma <* closeAngle
     fields <- try parseNamedFields <|> parseUnnamedFields
@@ -104,12 +104,14 @@ parseEnumDec = parseVis >>= parseEnumDecRest
 
 parseEnumDecRest :: Visibility -> Parser Stmt
 parseEnumDecRest vis = do
-    name <- string "enum" *> space *> parseIdentifier
+    _ <- string "enum" *> space
+    cap <- parseCapability Shared
+    name <- parseIdentifier
     tyvars <- openAngle *> parseGenericParam `sepBy` comma <* closeAngle
     body <- openBody *> parseEnumConstructor `sepBy` comma <* closeBody
 
     let fields = Variants body
-    return $ RecordStmt $ Record name tyvars fields EnumKind vis Unspecified
+    return $ RecordStmt $ Record name tyvars fields EnumKind vis cap
 
 parseStmt :: Parser Stmt
 parseStmt = SpannedStmt <$> withSpan parseStmtInner

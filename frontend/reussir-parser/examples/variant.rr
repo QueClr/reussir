@@ -1,0 +1,17 @@
+enum [value] Option<T> {
+    Some(T),
+    None
+}
+
+fn foo() -> Option<i32> {
+    Option::None{}
+}
+
+enum RcOption<T> {
+    Some(T),
+    None
+}
+
+fn bar() -> RcOption<i32> {
+    RcOption::None{}
+}

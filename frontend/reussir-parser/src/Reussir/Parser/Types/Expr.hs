@@ -38,7 +38,6 @@ data UnaryOp = Negate | Not deriving (Show, Eq)
 
 data CtorCall = CtorCall
     { ctorName :: Path
-    , ctorVariant :: Maybe Identifier -- For enum variants
     , ctorTyArgs :: [Maybe Type] -- underscore represented as Nothing
     , ctorArgs :: [(Maybe Identifier, Expr)]
     }

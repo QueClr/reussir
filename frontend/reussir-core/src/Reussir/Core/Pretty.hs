@@ -111,11 +111,15 @@ instance PrettyColored Expr where
                         <> (if null tyArgs then mempty else angles (commaSep (map prettyColored tyArgs)))
                         <> (if regional then "[regional]" else mempty)
                         <> parens (commaSep (map prettyColored args))
-                CtorCall path tyArgs variant args ->
+                CompoundCall path tyArgs args ->
                     prettyColored path
                         <> (if null tyArgs then mempty else angles (commaSep (map prettyColored tyArgs)))
-                        <> (case variant of Nothing -> mempty; Just v -> "::#" <> pretty v)
                         <> parens (commaSep (map prettyColored args))
+                VariantCall path tyArgs variant arg ->
+                    prettyColored path
+                        <> (if null tyArgs then mempty else angles (commaSep (map prettyColored tyArgs)))
+                        <> brackets (pretty variant)
+                        <> parens (prettyColored arg)
                 Poison -> keyword "poison"
                 RunRegion e -> keyword "run_region" <> braces (prettyColored e)
          in case exprKind expr of

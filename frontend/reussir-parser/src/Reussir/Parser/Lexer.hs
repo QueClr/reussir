@@ -138,10 +138,10 @@ parseBool = try $ do
     space
     return b
 
-parseCapability :: Parser Capability
-parseCapability =
+parseCapability :: Capability -> Parser Capability
+parseCapability fallback =
     optional (char '[' *> space *> parseCapKeyword <* char ']' <* space) >>= \case
-        Nothing -> return Unspecified
+        Nothing -> return fallback
         Just c -> return c
 
 parseCapKeyword :: Parser Capability

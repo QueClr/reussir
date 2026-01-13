@@ -478,13 +478,16 @@ compoundCreateCodegen fields (resVal, resTy) = emitBuilderLineM $ do
     resVal' <- emit resVal
     resTy' <- emit resTy
     return $
-        resVal'
-            <> " = reussir.record.compound ("
-            <> intercalate ", " fieldVals
-            <> " : "
-            <> intercalate ", " fieldTys
-            <> ") : "
-            <> resTy'
+        if null fieldVals
+            then resVal' <> " = reussir.record.compound : " <> resTy'
+            else
+                resVal'
+                    <> " = reussir.record.compound ("
+                    <> intercalate ", " fieldVals
+                    <> " : "
+                    <> intercalate ", " fieldTys
+                    <> ") : "
+                    <> resTy'
 
 variantCreateCodegen :: Int64 -> TypedValue -> TypedValue -> Codegen ()
 variantCreateCodegen tag value (resVal, resTy) = emitBuilderLineM $ do

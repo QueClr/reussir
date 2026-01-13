@@ -5,7 +5,6 @@ module Reussir.Parser.Pretty (
     PrettyColored (..),
 ) where
 
-import Data.Maybe (isJust, isNothing)
 import Prettyprinter
 import Prettyprinter.Render.Terminal
 import Reussir.Parser.Types.Capability
@@ -142,19 +141,13 @@ instance PrettyColored Expr where
     prettyColored (SpannedExpr w) = prettyColored (spanValue w)
     prettyColored (RegionalExpr e) = keyword "regional" <+> braces (prettyColored e)
     prettyColored (AccessChain e accesses) = prettyColored e <> mconcat (map prettyColored accesses)
-    prettyColored (CtorCallExpr (CtorCall path variant tys args)) =
+    prettyColored (CtorCallExpr (CtorCall path tys args)) =
         prettyColored path
             <> (if null tys then mempty else angles (commaSep (map prettyTyArg tys)))
-            <> (case variant of Nothing -> mempty; Just v -> "::" <> prettyColored v)
-            <> prettyArgs args
+            <> braces (commaSep (map prettyArg args))
       where
         prettyTyArg Nothing = "_"
         prettyTyArg (Just t) = prettyColored t
-
-        prettyArgs as
-            | isJust variant && null as = mempty
-            | isJust variant && all (isNothing . fst) as = parens (commaSep (map (prettyColored . snd) as))
-            | otherwise = braces (commaSep (map prettyArg as))
 
         prettyArg (Just n, e) = prettyColored n <> colon <+> prettyColored e
         prettyArg (Nothing, e) = prettyColored e

@@ -392,7 +392,6 @@ inferType
                 { Syn.ctorArgs = ctorArgs
                 , Syn.ctorName = ctorCallTarget
                 , Syn.ctorTyArgs = ctorTyArgs
-                , Syn.ctorVariant = ctorVariant
                 }
         ) = do
         L.logTrace_ $ "Tyck: infer ctor call " <> T.pack (show ctorCallTarget)
@@ -417,28 +416,27 @@ inferType
                         <> T.pack (show tyArgs')
                 checkTypeArgsNum numGenerics paddedTyArgs $ do
                     let genericMap = recordGenericMap record tyArgs'
-                    -- Find variant index if target variant is specified
-                    -- Check if the ctor call style fulfills the variant/compound style in the same time
-                    (fields, variantIdx) <- case (Sem.recordFields record, ctorVariant) of
-                        (Sem.Named fs, Nothing) -> return (map (\(n, t, f) -> (Just n, t, f)) fs, Nothing)
-                        (Sem.Unnamed fs, Nothing) -> return (map (\(t, f) -> (Nothing, t, f)) fs, Nothing)
-                        (Sem.Variants vs, Just vName) -> case elemIndex vName (map fst vs) of
-                            Just idx -> let (_, ts) = vs !! idx in return (map (\t -> (Nothing, t, False)) ts, Just idx)
-                            Nothing -> do
-                                reportError $ "Variant not found: " <> unIdentifier vName
-                                return ([], Nothing)
-                        (Sem.Variants _, Nothing) -> do
-                            reportError "Expected variant for enum type"
+
+                    (fields, variantInfo) <- case (Sem.recordKind record, Sem.recordFields record) of
+                        (Sem.StructKind, Sem.Named fs) -> return (map (\(n, t, f) -> (Just n, t, f)) fs, Nothing)
+                        (Sem.StructKind, Sem.Unnamed fs) -> return (map (\(t, f) -> (Nothing, t, f)) fs, Nothing)
+                        (Sem.EnumVariant parentPath idx, Sem.Unnamed fs) -> return (map (\(t, f) -> (Nothing, t, f)) fs, Just (parentPath, idx))
+                        (Sem.EnumVariant _ _, Sem.Named _) -> do
+                            -- This should be unreachable based on current translation logic
+                            reportError "Enum variant cannot have named fields yet"
                             return ([], Nothing)
-                        (_, Just _) -> do
-                            reportError "Unexpected variant for non-enum type"
+                        (Sem.EnumKind, _) -> do
+                            reportError "Cannot instantiate Enum directly"
+                            return ([], Nothing)
+                        _ -> do
+                            reportError "Invalid record kind/fields combination"
                             return ([], Nothing)
 
                     let expectedNumParams = length fields
                     checkArgsNum expectedNumParams $ do
                         -- Reconstruct an ordered list of syntatic expressions in the same order as required in the record
                         orderedArgsExprs <-
-                            if isJust ctorVariant || case Sem.recordFields record of Sem.Unnamed _ -> True; _ -> False
+                            if isJust variantInfo || case Sem.recordFields record of Sem.Unnamed _ -> True; _ -> False
                                 then return $ map (Just . snd) ctorArgs
                                 else do
                                     let hasNamedArgs = any (isJust . fst) ctorArgs
@@ -472,18 +470,47 @@ inferType
                                 orderedArgsExprs
                                 fields
 
-                        let recordTy = Sem.TypeRecord ctorCallTarget tyArgs'
-                        let ctorCall =
-                                Sem.CtorCall
-                                    { Sem.ctorCallTarget = ctorCallTarget
-                                    , Sem.ctorCallTyArgs = tyArgs'
-                                    , Sem.ctorCallVariant = variantIdx
-                                    , Sem.ctorCallArgs = argExprs'
-                                    }
+                        let recordTy = case variantInfo of
+                                Just (parent, _) -> Sem.TypeRecord parent tyArgs'
+                                Nothing -> Sem.TypeRecord ctorCallTarget tyArgs'
 
-                        let defaultCap = case Sem.recordDefaultCap record of
+                        ctorCall <- case variantInfo of
+                            Just (parentPath, idx) -> do
+                                let innerTy = Sem.TypeRecord ctorCallTarget tyArgs'
+                                innerExpr <-
+                                    exprWithSpan innerTy $
+                                        Sem.CompoundCall
+                                            { Sem.compoundCallTarget = ctorCallTarget
+                                            , Sem.compoundCallTyArgs = tyArgs'
+                                            , Sem.compoundCallArgs = argExprs'
+                                            }
+                                pure $
+                                    Sem.VariantCall
+                                        { Sem.variantCallTarget = parentPath
+                                        , Sem.variantCallTyArgs = tyArgs'
+                                        , Sem.variantCallVariant = idx
+                                        , Sem.variantCallArg = innerExpr
+                                        }
+                            Nothing ->
+                                pure
+                                    Sem.CompoundCall
+                                        { Sem.compoundCallTarget = ctorCallTarget
+                                        , Sem.compoundCallTyArgs = tyArgs'
+                                        , Sem.compoundCallArgs = argExprs'
+                                        }
+
+                        defaultCap <- case variantInfo of
+                            Nothing -> return $ case Sem.recordDefaultCap record of
                                 Cap.Regional -> Cap.Flex
                                 cap -> cap
+                            Just (parentPath, _) -> do
+                                liftIO (H.lookup records parentPath) >>= \case
+                                    Just parentRecord -> return $ case Sem.recordDefaultCap parentRecord of
+                                        Cap.Regional -> Cap.Flex
+                                        cap -> cap
+                                    Nothing -> do
+                                        reportError $ "Parent record not found: " <> T.pack (show parentPath)
+                                        return Cap.Value
 
                         when (defaultCap == Cap.Flex) $ do
                             insideRegion' <- State.gets insideRegion

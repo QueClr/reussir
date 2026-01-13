@@ -47,11 +47,16 @@ data ExprKind
         , funcCallRegional :: Bool
         }
     | Poison
-    | CtorCall
-        { ctorCallTarget :: Path
-        , ctorCallTyArgs :: [Type]
-        , ctorCallVariant :: Maybe Int
-        , ctorCallArgs :: [Expr]
+    | CompoundCall
+        { compoundCallTarget :: Path
+        , compoundCallTyArgs :: [Type]
+        , compoundCallArgs :: [Expr]
+        }
+    | VariantCall
+        { variantCallTarget :: Path
+        , variantCallTyArgs :: [Type]
+        , variantCallVariant :: Int
+        , variantCallArg :: Expr
         }
     deriving (Show, Eq)
 

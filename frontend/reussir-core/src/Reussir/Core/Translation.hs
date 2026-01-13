@@ -459,6 +459,24 @@ scanStmt (Syn.RecordStmt record) = do
                     , Sem.recordDefaultCap = Syn.recordDefaultCap record
                     }
 
+        -- For variant, we add each sub-variant as a record, with recordName
+        -- extended with variant name and value capability.
+        case fields of
+            Sem.Variants vs -> do
+                forM_ (zip [0 ..] vs) $ \(variantIdx, (variantName, variantFields)) -> do
+                    let variantPath = Path variantName [name] -- TODO: handle module path
+                    let variantRecord =
+                            Sem.Record
+                                { Sem.recordName = variantPath
+                                , Sem.recordTyParams = genericsList -- share same generics as parent
+                                , Sem.recordFields = Sem.Unnamed (map (,False) variantFields)
+                                , Sem.recordKind = Sem.EnumVariant{variantParent = Path name [], variantIdx}
+                                , Sem.recordVisibility = Syn.recordVisibility record
+                                , Sem.recordDefaultCap = Value
+                                }
+                    addRecordDefinition variantPath variantRecord
+            _ -> return ()
+
         let path = Path name [] -- TODO: handle module path
         addRecordDefinition path semRecord
 scanStmt
@@ -668,10 +686,14 @@ wellTypedExpr expr = do
             tyArgs' <- mapM forceAndCheckHoles tyArgs
             args' <- mapM wellTypedExpr args
             return $ Sem.FuncCall target tyArgs' args' regional
-        Sem.CtorCall path tyArgs variant args -> do
+        Sem.CompoundCall path tyArgs args -> do
             tyArgs' <- mapM forceAndCheckHoles tyArgs
             args' <- mapM wellTypedExpr args
-            return $ Sem.CtorCall path tyArgs' variant args'
+            return $ Sem.CompoundCall path tyArgs' args'
+        Sem.VariantCall path tyArgs variant arg -> do
+            tyArgs' <- mapM forceAndCheckHoles tyArgs
+            arg' <- wellTypedExpr arg
+            return $ Sem.VariantCall path tyArgs' variant arg'
         Sem.Poison -> return Sem.Poison
         Sem.RunRegion e -> Sem.RunRegion <$> wellTypedExpr e
     return $ expr{Sem.exprType = ty', Sem.exprKind = kind'}
@@ -725,9 +747,20 @@ analyzeGenericFlowInExpr expr = do
                     let generics = Sem.funcGenerics proto
                     analyzeGenericInstantiationFlow generics tyArgs
                 Nothing -> pure () -- Should have been caught by type checker
-        Sem.CtorCall target tyArgs _ args -> do
+        Sem.CompoundCall target tyArgs args -> do
             -- Analyze arguments
             mapM_ analyzeGenericFlowInExpr args
+
+            -- Analyze generic flow
+            knownRecords <- State.gets knownRecords
+            liftIO (H.lookup knownRecords target) >>= \case
+                Just record -> do
+                    let generics = Sem.recordTyParams record
+                    analyzeGenericInstantiationFlow generics tyArgs
+                Nothing -> pure () -- Should have been caught by type checker
+        Sem.VariantCall target tyArgs _ arg -> do
+            -- Analyze arguments
+            analyzeGenericFlowInExpr arg
 
             -- Analyze generic flow
             knownRecords <- State.gets knownRecords
