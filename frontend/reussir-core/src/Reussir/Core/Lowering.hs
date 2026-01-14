@@ -1001,6 +1001,7 @@ translateModule gSln = do
     forM_ functionList $ \(path, proto) -> do
         case path of
             Path _ ["core", "intrinsic", "math"] -> pure () -- Skip math intrinsics
+            Path _ ["core", "intrinsic", "arith"] -> pure () -- Skip arith intrinsics
             _ ->
                 if null (funcGenerics proto)
                     then do

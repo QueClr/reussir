@@ -76,6 +76,18 @@ import System.Console.ANSI.Types qualified as ANSI
 
 type Tyck = Eff '[IOE, Prim, L.Log, State.State TranslationState]
 
+withSpan :: (Int64, Int64) -> Tyck a -> Tyck a
+withSpan span' cont = do
+    oldSpan <- State.gets currentSpan
+    State.modify $ \s -> s{currentSpan = Just span'}
+    result <- cont
+    State.modify $ \s -> s{currentSpan = oldSpan}
+    return result
+
+withMaybeSpan :: Maybe (Int64, Int64) -> Tyck a -> Tyck a
+withMaybeSpan Nothing cont = cont
+withMaybeSpan (Just span') cont = withSpan span' cont
+
 clearLocals :: Tyck ()
 clearLocals = do
     clearHoles
@@ -640,6 +652,7 @@ reportError :: T.Text -> Tyck ()
 reportError msg = do
     st <- State.get
     let span' = currentSpan st
+    L.logTrace_ $ "reporting error at span: " <> T.pack (show span')
     let file = currentFile st
     let report = case span' of
             Just (start, end) ->
@@ -746,8 +759,11 @@ forceAndCheckHoles ty = do
             return $ Sem.TypeRef t' cap
         _ -> return ty'
 
+{- | wellTypedExpr is to canonicalize the expression by substituting
+  the type holes with the actual types.
+-}
 wellTypedExpr :: Sem.Expr -> Tyck Sem.Expr
-wellTypedExpr expr = do
+wellTypedExpr expr = withMaybeSpan (Sem.exprSpan expr) $ do
     ty' <- forceAndCheckHoles (Sem.exprType expr)
     kind' <- case Sem.exprKind expr of
         Sem.GlobalStr s -> return $ Sem.GlobalStr s
@@ -771,57 +787,6 @@ wellTypedExpr expr = do
         Sem.FuncCall target tyArgs args regional -> do
             tyArgs' <- mapM forceAndCheckHoles tyArgs
             args' <- mapM wellTypedExpr args
-            -- Check for intrinsic flags
-            case target of
-                Path name ["core", "intrinsic", "math"] -> do
-                    let floatUnary =
-                            [ "absf"
-                            , "acos"
-                            , "acosh"
-                            , "asin"
-                            , "asinh"
-                            , "atan"
-                            , "atanh"
-                            , "cbrt"
-                            , "ceil"
-                            , "cos"
-                            , "cosh"
-                            , "erf"
-                            , "erfc"
-                            , "exp"
-                            , "exp2"
-                            , "expm1"
-                            , "floor"
-                            , "log10"
-                            , "log1p"
-                            , "log2"
-                            , "round"
-                            , "roundeven"
-                            , "rsqrt"
-                            , "sin"
-                            , "sinh"
-                            , "sqrt"
-                            , "tan"
-                            , "tanh"
-                            , "trunc"
-                            ]
-                    let checks = ["isfinite", "isinf", "isnan", "isnormal"]
-                    let floatBinary = ["atan2", "copysign", "powf"]
-                    let hasFlag =
-                            (name `elem` floatUnary)
-                                || (name `elem` checks)
-                                || (name `elem` floatBinary)
-                                || name == "fma"
-                                || name == "fpowi"
-                    if hasFlag
-                        then do
-                            let flagArg = last args'
-                            case Sem.exprKind flagArg of
-                                Sem.Constant _ -> return ()
-                                _ -> reportError "Intrinsic flag must be a constant literal"
-                        else return ()
-                _ -> return ()
-
             return $ Sem.FuncCall target tyArgs' args' regional
         Sem.CompoundCall path tyArgs args -> do
             tyArgs' <- mapM forceAndCheckHoles tyArgs

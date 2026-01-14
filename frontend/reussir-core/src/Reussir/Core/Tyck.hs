@@ -335,6 +335,56 @@ inferType (Syn.FuncCallExpr (Syn.FuncCall{Syn.funcCallName = path, Syn.funcCallT
                 let expectedNumParams = length instantiatedArgTypes
                 checkArgsNum expectedNumParams $ do
                     argExprs' <- zipWithM checkType argExprs instantiatedArgTypes
+                    -- Check for intrinsic flags
+                    case path of
+                        Path name ["core", "intrinsic", "math"] -> do
+                            let floatUnary =
+                                    [ "absf"
+                                    , "acos"
+                                    , "acosh"
+                                    , "asin"
+                                    , "asinh"
+                                    , "atan"
+                                    , "atanh"
+                                    , "cbrt"
+                                    , "ceil"
+                                    , "cos"
+                                    , "cosh"
+                                    , "erf"
+                                    , "erfc"
+                                    , "exp"
+                                    , "exp2"
+                                    , "expm1"
+                                    , "floor"
+                                    , "log10"
+                                    , "log1p"
+                                    , "log2"
+                                    , "round"
+                                    , "roundeven"
+                                    , "rsqrt"
+                                    , "sin"
+                                    , "sinh"
+                                    , "sqrt"
+                                    , "tan"
+                                    , "tanh"
+                                    , "trunc"
+                                    ]
+                            let checks = ["isfinite", "isinf", "isnan", "isnormal"]
+                            let floatBinary = ["atan2", "copysign", "powf"]
+                            let hasFlag =
+                                    (name `elem` floatUnary)
+                                        || (name `elem` checks)
+                                        || (name `elem` floatBinary)
+                                        || name == "fma"
+                                        || name == "fpowi"
+                            if hasFlag
+                                then do
+                                    let flagArg = last argExprs'
+                                    case Sem.exprKind flagArg of
+                                        Sem.Constant _ -> return ()
+                                        _ -> reportError "Intrinsic flag must be a constant literal"
+                                else return ()
+                        _ -> return ()
                     let instantiatedRetType = substituteTypeParams (funcReturnType proto) genericMap
                     exprWithSpan instantiatedRetType $
                         Sem.FuncCall
@@ -553,12 +603,8 @@ inferType
                             <> T.pack (show (length actualTyArgs))
                     exprWithSpan Sem.TypeBottom Sem.Poison
                 else paramAction
-inferType (Syn.SpannedExpr (WithSpan subExpr start end)) = do
-    oldSpan <- currentSpan <$> State.get
-    State.modify $ \st -> st{currentSpan = Just (start, end)}
-    res <- inferType subExpr
-    State.modify $ \st -> st{currentSpan = oldSpan}
-    return res
+inferType (Syn.SpannedExpr (WithSpan subExpr start end)) =
+    withSpan (start, end) $ inferType subExpr
 inferType e = error $ "unimplemented inference for:\n\t" ++ show e
 
 -- Binary operations
@@ -632,12 +678,7 @@ inferTypeBinOp op lhs rhs = case convertOp op of
                 exprWithSpan Sem.TypeBottom Sem.Poison
 
 checkType :: Syn.Expr -> Sem.Type -> Tyck Sem.Expr
-checkType (Syn.SpannedExpr (WithSpan subExpr start end)) ty = do
-    oldSpan <- currentSpan <$> State.get
-    State.modify $ \st -> st{currentSpan = Just (start, end)}
-    res <- checkType subExpr ty
-    State.modify $ \st -> st{currentSpan = oldSpan}
-    return res
+checkType (Syn.SpannedExpr (WithSpan subExpr start end)) ty = withSpan (start, end) $ checkType subExpr ty
 checkType expr ty = do
     L.logTrace_ $ "Tyck: checkType expected=" <> T.pack (show ty)
     -- this is apparently not complete. We need to handle lambda/unification
