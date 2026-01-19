@@ -5,9 +5,7 @@ packages:
   frontend/reussir-bridge
   frontend/reussir-codegen
   frontend/reussir-parser
-  frontend/reussir-repl
   frontend/reussir-diagnostic
-  frontend/reussir-core
   frontend/reussir-core2
 
 -- Common build options
@@ -24,9 +22,3 @@ tests: True
 
 -- Benchmarks
 benchmarks: False
-
--- Git dependencies
-source-repository-package
-  type: git
-  location: https://github.com/sternenseemann/punycode.git
-  tag: ghc-9.6

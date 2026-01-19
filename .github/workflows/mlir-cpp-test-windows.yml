@@ -26,6 +26,7 @@ jobs:
           msystem: clang64
           update: true
           install: >-
+            git
             mingw-w64-clang-x86_64-toolchain
             mingw-w64-clang-x86_64-cmake
             mingw-w64-clang-x86_64-ninja
@@ -35,6 +36,21 @@ jobs:
             mingw-w64-clang-x86_64-python
             mingw-w64-clang-x86_64-python-pip
             mingw-w64-clang-x86_64-rustup
+
+      - name: Setup GHCup MSYSTEM
+        shell: msys2 {0}
+        run: |
+          echo "GHCUP_MSYS2_ENV=CLANG64" >> $GITHUB_ENV
+
+      - name: Setup GHCup Without Silly Upstream
+        shell: msys2 {0}
+        run: |
+          export BOOTSTRAP_HASKELL_GHC_VERSION=9.10.3
+          export BOOTSTRAP_HASKELL_CABAL_VERSION=latest
+          curl --proto '=https' --tlsv1.2 -sSf https://get-ghcup.haskell.org | sh
+          . /c/ghcup/env
+          cabal update
+          
 
       - name: Install Rust and Python dependencies
         shell: msys2 {0}
@@ -58,41 +74,26 @@ jobs:
         shell: msys2 {0}
         run: cmake --build build --parallel
 
-      - name: Add paths to Windows PATH
-        shell: pwsh
-        run: |
-          $msys2Path = "${{ steps.msys2.outputs.msys2-location }}/clang64/bin"
-          $buildPath = "${{ github.workspace }}/build/bin"
-          $downlevelPath = "c:/Windows/System32/downlevel"
-          echo "$msys2Path" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          echo "$buildPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          echo "$downlevelPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Run Integration Tests
         shell: msys2 {0}
         run: |
-          export PATH="$PATH:${{ github.workspace }}/build/bin"
+          . /c/ghcup/env
+          . .github/workflows/setup_path.sh
           cmake --build build --target check
 
-      - name: Setup GHCup MSYSTEM
+      - name: Build Haskell frontend
         shell: msys2 {0}
         run: |
-          echo "GHCUP_MSYS2_ENV=CLANG64" >> $GITHUB_ENV
-
-      - name: Setup GHCup
-        uses: haskell/ghcup-setup@v1
-        with:
-          ghc: 9.10.3
-          cabal: latest
-
-      - name: Build Haskell frontend
-        shell: pwsh
-        run: |
+          . /c/ghcup/env
+          . .github/workflows/setup_path.sh
           cabal update
           cabal build all -j
 
       - name: Test Haskell frontend
-        shell: pwsh
+        shell: msys2 {0}
         run: |
+          . /c/ghcup/env
+          . .github/workflows/setup_path.sh
           chcp.com 65001
           cabal test all -j

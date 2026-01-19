@@ -25,12 +25,18 @@ jobs:
           toolchain: nightly
           components: rust-src, rustfmt, clippy, rustc-dev, llvm-tools-preview
 
+      - name: Setup GHC
+        uses: haskell/ghcup-setup@v1
+        with:
+          ghc: 9.10.3
+          cabal: latest
 
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build wget libgtest-dev libgmock-dev libspdlog-dev
           sudo pip install lit --break-system-packages
+          cabal update
 
       - name: Install LLVM ${{ matrix.llvm-version }}
         run: |
