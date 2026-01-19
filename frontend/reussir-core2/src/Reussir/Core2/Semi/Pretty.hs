@@ -11,7 +11,7 @@ import Reussir.Core2.Data.FP (FloatingPointType (..))
 import Reussir.Core2.Data.Integral (IntegralType (..))
 import Reussir.Core2.Data.Operator (ArithOp (..), CmpOp (..))
 import Reussir.Core2.Data.Semi.Expr (Expr (..), ExprKind (..))
-import Reussir.Core2.Data.Semi.Type (Type (..))
+import Reussir.Core2.Data.Semi.Type (Flexivity (..), Type (..))
 import Reussir.Core2.Data.String (StringToken (..))
 import Reussir.Core2.Data.UniqueID (GenericID (..), HoleID (..), VarID (..))
 import Reussir.Parser.Pretty (PrettyColored (..))
@@ -46,10 +46,16 @@ instance PrettyColored FloatingPointType where
     prettyColored BFloat16 = typeName "bfloat16"
     prettyColored Float8 = typeName "float8"
 
+instance PrettyColored Flexivity where
+    prettyColored Irrelevant = mempty
+    prettyColored Flex = brackets $ keyword "flex"
+    prettyColored Rigid = brackets $ keyword "rigid"
+    prettyColored Regional = brackets $ keyword "regional"
+
 instance PrettyColored Type where
-    prettyColored (TypeRecord path args _flex) =
+    prettyColored (TypeRecord path args flex) =
         -- Flexivity currently ignored in pretty printing
-        prettyColored path <> if null args then mempty else angles (commaSep (map prettyColored args))
+        prettyColored path <> prettyColored flex <> if null args then mempty else angles (commaSep (map prettyColored args))
     prettyColored (TypeIntegral t) = prettyColored t
     prettyColored (TypeFP t) = prettyColored t
     prettyColored TypeBool = typeName "bool"
