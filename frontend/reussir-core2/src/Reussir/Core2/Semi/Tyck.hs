@@ -34,7 +34,6 @@ import Effectful.Log qualified as L
 import Effectful.Prim.IORef.Strict (writeIORef')
 import Reussir.Core2.Data (Flexivity (..), GenericID (..), GlobalSemiEff, Record (..))
 import Reussir.Core2.Data.Class (Class (Class), TypeBound)
-import Reussir.Core2.Data.Function (FunctionProto (..), FunctionTable (..))
 import Reussir.Core2.Data.Integral (IntegralType (..))
 import Reussir.Core2.Data.Operator (ArithOp (..), CmpOp (..))
 import Reussir.Core2.Data.Semi (
@@ -44,9 +43,9 @@ import Reussir.Core2.Data.Semi (
     Type (..),
  )
 import Reussir.Core2.Data.Semi.Expr (Expr (..), ExprKind (..))
+import Reussir.Core2.Data.Semi.Function (FunctionProto (..), FunctionTable (..))
 import Reussir.Core2.Data.Semi.Record (RecordFields (..), RecordKind (..))
 import Reussir.Core2.Data.Semi.Unification (HoleState (..))
-import Reussir.Core2.Function (getFunctionProto)
 import Reussir.Core2.Semi.Context (
     addErrReport,
     addErrReportMsg,
@@ -61,6 +60,7 @@ import Reussir.Core2.Semi.Context (
     withSpan,
     withVariable,
  )
+import Reussir.Core2.Semi.Function (getFunctionProto)
 import Reussir.Core2.Semi.Type (substituteGenericMap)
 import Reussir.Core2.Semi.Unification (errorToReport, force, getGenericBound, getHoleState, introduceNewHole, satisfyBounds, unify)
 import Reussir.Core2.Semi.Variable (lookupVar)

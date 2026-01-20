@@ -16,7 +16,7 @@ import Options.Applicative
 import Prettyprinter (hardline)
 import Prettyprinter.Render.Terminal (putDoc)
 import Reussir.Bridge qualified as B
-import Reussir.Core2.Data.Function (FunctionTable (..))
+import Reussir.Core2.Data.Semi.Function (FunctionTable (..))
 import Reussir.Core2.Data.Semi.Context (SemiContext (..))
 import Reussir.Core2.Semi.Context (emptySemiContext, scanStmt)
 import Reussir.Core2.Semi.FlowAnalysis (solveAllGenerics)

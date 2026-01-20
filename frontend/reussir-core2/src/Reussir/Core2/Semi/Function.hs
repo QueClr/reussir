@@ -1,11 +1,11 @@
-module Reussir.Core2.Function where
+module Reussir.Core2.Semi.Function where
 
 import Data.HashTable.IO qualified as H
 import Effectful (Eff, IOE, liftIO, (:>))
 import Effectful.Prim (Prim)
 import Effectful.Prim.IORef.Strict (writeIORef')
-import Reussir.Core2.Data.Function (FunctionProto (..), FunctionTable (..))
 import Reussir.Core2.Data.Semi.Expr (Expr)
+import Reussir.Core2.Data.Semi.Function (FunctionProto (..), FunctionTable (..))
 import Reussir.Parser.Types.Lexer (Path)
 
 addFunctionProto :: (IOE :> es) => Path -> FunctionProto -> FunctionTable -> Eff es ()

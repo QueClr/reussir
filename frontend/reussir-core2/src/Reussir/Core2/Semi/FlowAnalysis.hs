@@ -12,7 +12,7 @@ import Effectful.Log qualified as L
 import Effectful.Prim.IORef.Strict (readIORef')
 import Effectful.State.Static.Local qualified as State
 import Reussir.Core2.Data (GenericSolution)
-import Reussir.Core2.Data.Function (FunctionProto (..), FunctionTable (..))
+import Reussir.Core2.Data.Semi.Function (FunctionProto (..), FunctionTable (..))
 import Reussir.Core2.Data.Semi (Record (..), RecordFields (..))
 import Reussir.Core2.Data.Semi.Context (GlobalSemiEff, SemiContext (..))
 import Reussir.Core2.Data.Semi.Expr (Expr (..), ExprKind (..))

@@ -1,0 +1,21 @@
+module Reussir.Core2.Data.Full.Function where
+
+import Data.Int (Int64)
+import Reussir.Codegen.Context.Symbol (Symbol)
+import Reussir.Core2.Data.Full.Expr qualified as Full
+import Reussir.Core2.Data.Full.Type qualified as Full
+import Reussir.Core2.Data.Semi.Type qualified as Semi
+import Reussir.Parser.Types.Lexer (Identifier, Path)
+import Reussir.Parser.Types.Stmt (Visibility)
+
+data Function = Function
+    { funcVisibility :: Visibility
+    , funcName :: Symbol
+    , funcRawPath :: Path
+    , funcInstantiatedTyArgs :: [Semi.Type]
+    , funcParams :: [(Identifier, Full.Type)]
+    , funcReturnType :: Full.Type
+    , funcIsRegional :: Bool
+    , funcBody :: Maybe Full.Expr
+    , funcSpan :: Maybe (Int64, Int64)
+    }

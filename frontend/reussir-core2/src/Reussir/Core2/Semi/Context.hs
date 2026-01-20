@@ -45,7 +45,6 @@ import Reussir.Core2.Data (
  )
 import Reussir.Core2.Data.Class (Class (Class), ClassDAG)
 import Reussir.Core2.Data.FP (FloatingPointType (..))
-import Reussir.Core2.Data.Function (FunctionProto (..), FunctionTable (..))
 import Reussir.Core2.Data.Integral (IntegralType (..))
 import Reussir.Core2.Data.Semi (
     Flexivity (..),
@@ -56,11 +55,12 @@ import Reussir.Core2.Data.Semi (
  )
 import Reussir.Core2.Data.Semi qualified as Semi
 import Reussir.Core2.Data.Semi.Expr
+import Reussir.Core2.Data.Semi.Function (FunctionProto (..), FunctionTable (..))
 import Reussir.Core2.Data.Semi.Unification (UnificationEff)
 import Reussir.Core2.Data.String (StringUniqifier (StringUniqifier))
 import Reussir.Core2.Data.UniqueID (ExprID (..), GenericID (..), VarID)
-import Reussir.Core2.Function (newFunctionTable)
 import Reussir.Core2.Generic (emptyGenericState, newGenericVar)
+import Reussir.Core2.Semi.Function (newFunctionTable)
 import Reussir.Core2.Semi.Type (addClassToType, emptyTypeClassTable)
 import Reussir.Core2.Semi.Unification (newHoleTable)
 import Reussir.Core2.Semi.Variable (newVariable, newVariableTable, rollbackVar)

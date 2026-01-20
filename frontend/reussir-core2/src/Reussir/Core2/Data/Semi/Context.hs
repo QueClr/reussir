@@ -14,7 +14,7 @@ import Effectful.Prim (Prim)
 import Effectful.State.Static.Local (State)
 import Reussir.Bridge qualified as B
 import Reussir.Core2.Data.Class (ClassDAG)
-import Reussir.Core2.Data.Function (FunctionTable)
+import Reussir.Core2.Data.Semi.Function (FunctionTable)
 import Reussir.Core2.Data.Generic (GenericState)
 import Reussir.Core2.Data.Semi.Record (Record)
 import Reussir.Core2.Data.Semi.Type (TypeClassTable)

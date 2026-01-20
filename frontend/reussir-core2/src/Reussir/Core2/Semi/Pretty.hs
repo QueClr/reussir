@@ -14,7 +14,7 @@ import Effectful.Prim.IORef.Strict (readIORef')
 import Prettyprinter
 import Prettyprinter.Render.Terminal
 import Reussir.Core2.Data.FP (FloatingPointType (..))
-import Reussir.Core2.Data.Function (FunctionProto (..))
+import Reussir.Core2.Data.Semi.Function (FunctionProto (..))
 import Reussir.Core2.Data.Integral (IntegralType (..))
 import Reussir.Core2.Data.Operator (ArithOp (..), CmpOp (..))
 import Reussir.Core2.Data.Semi.Expr (Expr (..), ExprKind (..))

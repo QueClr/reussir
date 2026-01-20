@@ -1,4 +1,4 @@
-module Reussir.Core2.Data.Function where
+module Reussir.Core2.Data.Semi.Function where
 
 import Data.HashTable.IO qualified as H
 import Effectful.Prim.IORef.Strict (IORef')
