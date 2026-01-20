@@ -35,24 +35,43 @@ import Effectful.State.Static.Local (runState)
 import Effectful.State.Static.Local qualified as State
 import Reussir.Bridge qualified as B
 import Reussir.Core2.Class (addClass, newDAG, populateDAG)
-import Reussir.Core2.Data (GlobalSemiEff, RecordFields (..), RecordKind (..), SemiEff, TypeClassTable)
+import Reussir.Core2.Data (
+    GlobalSemiEff,
+    RecordFields (..),
+    RecordKind (..),
+    SemiEff,
+    TypeClassTable,
+ )
 import Reussir.Core2.Data.Class (Class (Class), ClassDAG)
 import Reussir.Core2.Data.FP (FloatingPointType (..))
 import Reussir.Core2.Data.Function (FunctionProto (..), FunctionTable (..))
 import Reussir.Core2.Data.Integral (IntegralType (..))
-import Reussir.Core2.Data.Semi (Flexivity (..), LocalSemiContext (..), Record (..), SemiContext (..), Type (..))
+import Reussir.Core2.Data.Semi (
+    Flexivity (..),
+    LocalSemiContext (..),
+    Record (..),
+    SemiContext (..),
+    Type (..),
+ )
 import Reussir.Core2.Data.Semi qualified as Semi
 import Reussir.Core2.Data.Semi.Expr
 import Reussir.Core2.Data.Semi.Unification (UnificationEff)
 import Reussir.Core2.Data.String (StringUniqifier (StringUniqifier))
-import Reussir.Core2.Data.UniqueID (GenericID (..), VarID)
+import Reussir.Core2.Data.UniqueID (ExprID (..), GenericID (..), VarID)
 import Reussir.Core2.Function (newFunctionTable)
 import Reussir.Core2.Generic (emptyGenericState, newGenericVar)
 import Reussir.Core2.Semi.Type (addClassToType, emptyTypeClassTable)
 import Reussir.Core2.Semi.Unification (newHoleTable)
 import Reussir.Core2.Semi.Variable (newVariable, newVariableTable, rollbackVar)
 import Reussir.Diagnostic (Label (..))
-import Reussir.Diagnostic.Report (Report (..), addForegroundColorToCodeRef, addForegroundColorToText, annotatedCodeRef, defaultCodeRef, defaultText)
+import Reussir.Diagnostic.Report (
+    Report (..),
+    addForegroundColorToCodeRef,
+    addForegroundColorToText,
+    annotatedCodeRef,
+    defaultCodeRef,
+    defaultText,
+ )
 import Reussir.Parser.Prog qualified as Syn
 import Reussir.Parser.Types.Capability qualified as Syn
 import Reussir.Parser.Types.Lexer (Identifier (..), Path (..), WithSpan (..))

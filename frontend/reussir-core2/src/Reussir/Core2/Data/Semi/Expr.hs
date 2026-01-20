@@ -1,13 +1,12 @@
 module Reussir.Core2.Data.Semi.Expr where
 
-import Data.Hashable
 import Data.Int (Int64)
 import Data.Scientific (Scientific)
 import Data.Vector.Unboxed qualified as UV
 import Reussir.Core2.Data.Operator (ArithOp, CmpOp)
 import Reussir.Core2.Data.Semi.Type (Type)
 import Reussir.Core2.Data.String (StringToken)
-import Reussir.Core2.Data.UniqueID (VarID)
+import Reussir.Core2.Data.UniqueID (ExprID, VarID)
 import Reussir.Parser.Types.Lexer (Identifier, Path)
 
 data ExprKind
@@ -54,8 +53,6 @@ data ExprKind
         , intrinsicCallArgs :: [Expr]
         }
     deriving (Show, Eq)
-
-newtype ExprID = ExprID {unExprID :: Int} deriving (Show, Eq, Hashable)
 
 data Expr = Expr
     { exprKind :: ExprKind
