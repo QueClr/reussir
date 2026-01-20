@@ -3,6 +3,7 @@ module Reussir.Core2.Data.Semi.Expr where
 import Data.Hashable
 import Data.Int (Int64)
 import Data.Scientific (Scientific)
+import Data.Vector.Unboxed qualified as UV
 import Reussir.Core2.Data.Operator (ArithOp, CmpOp)
 import Reussir.Core2.Data.Semi.Type (Type)
 import Reussir.Core2.Data.String (StringToken)
@@ -20,7 +21,7 @@ data ExprKind
     | ScfIfExpr Expr Expr Expr
     | Var VarID
     | RegionRun Expr
-    | Proj Expr Int
+    | Proj Expr (UV.Vector Int)
     | Assign Expr Int Expr -- for now, we only allow single-field assignment
     | Let
         { letVarSpan :: Maybe (Int64, Int64)

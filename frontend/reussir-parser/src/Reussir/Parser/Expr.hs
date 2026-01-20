@@ -10,6 +10,7 @@ import Data.Functor
 import Data.Maybe
 
 import Data.Text qualified as T
+import Data.Vector.Strict (fromList)
 import Reussir.Parser.Lexer
 import Reussir.Parser.Type (parseType)
 import Reussir.Parser.Types hiding (space)
@@ -68,7 +69,7 @@ parseMatch :: Parser Expr
 parseMatch = do
     expr <- string "match" *> space *> parseExpr
     body <- openBody *> parseMatchCase `sepBy` comma <* closeBody
-    return (Match expr body)
+    return (Match expr (fromList body))
 
 parseConstant :: Parser Constant
 parseConstant =
@@ -151,7 +152,7 @@ parseAccess =
 accessOp :: Operator Parser Expr
 accessOp = Postfix $ do
     access <- some parseAccess
-    return $ \expr -> foldl' AccessExpr expr access
+    return $ flip AccessChain (fromList access)
 
 exprOpTable :: [[Operator Parser Expr]]
 exprOpTable =

@@ -25,8 +25,10 @@ import Control.Monad (unless, when, zipWithM)
 import Data.HashTable.IO qualified as H
 import Data.IntMap.Strict qualified as IntMap
 import Data.List (find)
-import Data.Maybe
+import Data.Maybe (isJust)
 import Data.Text qualified as T
+import Data.Vector.Strict qualified as V
+import Data.Vector.Unboxed qualified as UV
 import Effectful (MonadIO (liftIO), inject)
 import Effectful.Log qualified as L
 import Effectful.Prim.IORef.Strict (writeIORef')
@@ -429,14 +431,14 @@ inferType (Syn.Var varName) = do
 --  ────────────────────────────────────────
 --     C, record R, I : T, I in R |- T <- e.I
 -- Access a field of a record.
-inferType (Syn.AccessExpr baseExpr access) = do
+inferType (Syn.AccessChain baseExpr accesses) = do
     baseExpr' <- inferType baseExpr
     let baseTy = exprType baseExpr'
     baseTy' <- runUnification $ force baseTy
-    (projectedTy, index) <- resolveAccess baseTy'
-    exprWithSpan projectedTy $ Proj baseExpr' index
+    (projectedTy, indices) <- V.foldM' resolveAccess (baseTy', mempty) accesses
+    exprWithSpan projectedTy $ Proj baseExpr' (UV.fromList $ reverse indices)
   where
-    resolveAccess currentTy = do
+    resolveAccess (currentTy, acc) access = do
         case currentTy of
             TypeRecord path args _ -> do
                 knownRecords <- State.gets knownRecords
@@ -449,28 +451,28 @@ inferType (Syn.AccessExpr baseExpr access) = do
                                     Just (idx, (_, fieldTy, nullable)) -> do
                                         fieldTy' <- projectType nullable $ substituteGenericMap fieldTy subst
                                         L.logTrace_ $ "Field type: " <> T.pack (show fieldTy')
-                                        return (fieldTy', idx)
+                                        return (fieldTy', idx : acc)
                                     Nothing -> do
                                         addErrReportMsg $ "Field not found: " <> unIdentifier name
-                                        return (TypeBottom, -1)
+                                        return (TypeBottom, -1 : acc)
                             (Unnamed fields, Access.Unnamed idx) -> do
                                 let idxInt = fromIntegral idx
                                 case safeIndex fields idxInt of
                                     Just (fieldTy, nullable) -> do
                                         fieldTy' <- projectType nullable $ substituteGenericMap fieldTy subst
-                                        return (fieldTy', idxInt)
+                                        return (fieldTy', idxInt : acc)
                                     Nothing -> do
                                         addErrReportMsg $ "Field index out of bounds: " <> T.pack (show idx)
-                                        return (TypeBottom, -1)
+                                        return (TypeBottom, -1 : acc)
                             _ -> do
                                 addErrReportMsg "Invalid access type for record kind"
-                                return (TypeBottom, -1)
+                                return (TypeBottom, -1 : acc)
                     Nothing -> do
                         addErrReportMsg $ "Unknown record: " <> T.pack (show path)
-                        return (TypeBottom, -1)
+                        return (TypeBottom, -1 : acc)
             _ -> do
                 addErrReportMsg "Accessing field of non-record type"
-                return (TypeBottom, -1)
+                return (TypeBottom, -1 : acc)
 -- Function call:
 --            Г |- f : (T1, T2, ..., Tn) -> T, Г |- ei : Ti
 --  ────────────────────────────────────────────────────────────────────────────

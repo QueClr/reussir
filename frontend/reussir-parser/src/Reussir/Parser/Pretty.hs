@@ -5,6 +5,7 @@ module Reussir.Parser.Pretty (
     PrettyColored (..),
 ) where
 
+import Data.Vector.Strict qualified as V
 import Prettyprinter
 import Prettyprinter.Render.Terminal
 import Reussir.Parser.Types.Capability
@@ -134,14 +135,13 @@ instance PrettyColored Expr where
         prettyTyArg (Just t) = prettyColored t
     prettyColored (Lambda name t e) = operator "\\" <> prettyColored name <> operator ":" <+> prettyColored t <+> operator "->" <+> prettyColored e
     prettyColored (Match e cases) =
-        keyword "match" <+> prettyColored e <+> braces (nest 4 (hardline <> vsep (map prettyCase cases)) <> hardline)
+        keyword "match" <+> prettyColored e <+> braces (nest 4 (hardline <> vsep (map prettyCase $ V.toList cases)) <> hardline)
       where
         prettyCase (p, expr) = prettyColored p <+> operator "=>" <+> prettyColored expr
     prettyColored (Var path) = prettyColored path
     prettyColored (SpannedExpr w) = prettyColored (spanValue w)
     prettyColored (RegionalExpr e) = keyword "regional" <+> braces (prettyColored e)
-    prettyColored (AccessChain e accesses) = prettyColored e <> mconcat (map prettyColored accesses)
-    prettyColored (AccessExpr e access) = prettyColored e <> prettyColored access
+    prettyColored (AccessChain e accesses) = prettyColored e <> V.foldMap' prettyColored accesses
     prettyColored (CtorCallExpr (CtorCall path tys args)) =
         prettyColored path
             <> (if null tys then mempty else angles (commaSep (map prettyTyArg tys)))

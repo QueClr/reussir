@@ -89,7 +89,8 @@ library
                       inline-c-cpp,
                       hashable,
                       prettyprinter ^>= 1.7.1,
-                      prettyprinter-ansi-terminal
+                      prettyprinter-ansi-terminal,
+                      vector
 
     -- Directories containing source files.
     hs-source-dirs:   src

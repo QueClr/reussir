@@ -49,7 +49,7 @@ import Unicode.Char qualified as U
 
 -- | Space consumer that skips whitespace and line comments starting with "//".
 space :: Parser ()
-space = Lexer.space C.space1 (Lexer.skipLineComment "//") empty
+space = Lexer.space C.space1 (Lexer.skipLineComment "//") (Lexer.skipBlockComment "/*" "*/")
 
 -- | Parse a colon ':' followed by whitespace.
 colon :: Parser ()

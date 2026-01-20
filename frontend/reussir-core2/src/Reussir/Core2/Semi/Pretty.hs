@@ -6,6 +6,7 @@ module Reussir.Core2.Semi.Pretty (
     PrettyColored (..),
 ) where
 
+import Data.Vector.Unboxed qualified as UV
 import Effectful (Eff, IOE, (:>))
 import Effectful.Prim (Prim)
 import Effectful.Prim.IORef.Strict (readIORef')
@@ -167,9 +168,9 @@ instance PrettyColored Expr where
                             <> keyword "else"
                             <> nest 4 (line <> eDoc)
             Var (VarID i) -> pure $ variable $ "v" <> pretty i
-            Proj e idx -> do
+            Proj e indices -> do
                 eDoc <- prettyColored e
-                pure $ eDoc <> "." <> pretty idx
+                pure $ eDoc <> UV.foldMap (("." <>) . pretty) indices
             Assign e1 idx e2 -> do
                 e1Doc <- prettyColored e1
                 e2Doc <- prettyColored e2
