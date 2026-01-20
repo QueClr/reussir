@@ -6,6 +6,7 @@ import Test.Hspec
 import Test.Hspec.Megaparsec
 import Text.Megaparsec
 
+import Data.Vector.Strict (fromList)
 import Reussir.Parser.Expr
 import Reussir.Parser.Types.Expr
 import Reussir.Parser.Types.Lexer (Path (..), WithSpan (..))
@@ -20,15 +21,10 @@ stripExprSpans (Cast t e) = Cast t (stripExprSpans e)
 stripExprSpans (LetIn n t e1 e2) = LetIn n t (stripExprSpans e1) (stripExprSpans e2)
 stripExprSpans (FuncCallExpr (FuncCall p tys es)) = FuncCallExpr (FuncCall p tys (map stripExprSpans es))
 stripExprSpans (Lambda n t e) = Lambda n t (stripExprSpans e)
-stripExprSpans (Match e cases) = Match (stripExprSpans e) (map (\(p, ex) -> (p, stripExprSpans ex)) cases)
+stripExprSpans (Match e cases) = Match (stripExprSpans e) (fmap (\(p, ex) -> (p, stripExprSpans ex)) cases)
 stripExprSpans (RegionalExpr e) = RegionalExpr (stripExprSpans e)
 stripExprSpans (CtorCallExpr (CtorCall p tys args)) = CtorCallExpr (CtorCall p tys (map (\(i, e) -> (i, stripExprSpans e)) args))
 stripExprSpans (AccessChain e accesses) = AccessChain (stripExprSpans e) accesses
--- use access chain for testing for now. will need to remove this later
-stripExprSpans (AccessExpr e a) =
-    case stripExprSpans e of
-        AccessChain base accs -> AccessChain base (a : accs)
-        stripped -> AccessChain stripped [a]
 stripExprSpans e = e
 
 spec :: Spec
@@ -93,19 +89,19 @@ spec = do
     describe "parseAccessChain" $ do
         it "parses field access" $
             (stripExprSpans <$> parse parseExpr "" "foo.bar")
-                `shouldParse` AccessChain (Var (Path "foo" [])) [Named "bar"]
+                `shouldParse` AccessChain (Var (Path "foo" [])) (fromList [Named "bar"])
 
         it "parses nested field access" $
             (stripExprSpans <$> parse parseExpr "" "foo.bar.baz")
-                `shouldParse` AccessChain (Var (Path "foo" [])) [Named "baz", Named "bar"]
+                `shouldParse` AccessChain (Var (Path "foo" [])) (fromList [Named "bar", Named "baz"])
 
         it "parses tuple access" $
             (stripExprSpans <$> parse parseExpr "" "foo.0")
-                `shouldParse` AccessChain (Var (Path "foo" [])) [Unnamed 0]
+                `shouldParse` AccessChain (Var (Path "foo" [])) (fromList [Unnamed 0])
 
         it "parses mixed access" $
             (stripExprSpans <$> parse parseExpr "" "foo.bar.0.baz")
-                `shouldParse` AccessChain (Var (Path "foo" [])) [Named "baz", Unnamed 0, Named "bar"]
+                `shouldParse` AccessChain (Var (Path "foo" [])) (fromList [Named "bar", Unnamed 0, Named "baz"])
 
     describe "parseExpr" $ do
         it "parses less than or equal with potential type arg ambiguity" $

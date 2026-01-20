@@ -155,4 +155,5 @@ test-suite reussir-parser-test
         hspec-megaparsec,
         megaparsec,
         text,
-        reussir-parser
+        reussir-parser,
+        vector
