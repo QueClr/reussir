@@ -11,7 +11,7 @@ import Data.Vector.Strict qualified as V
 import Reussir.Parser.Type (parseType)
 import Reussir.Parser.Types hiding (space)
 import Reussir.Parser.Types.Capability (Capability (Shared))
-import Reussir.Parser.Types.Lexer (Identifier, Path)
+import Reussir.Parser.Types.Lexer (Identifier, Path, WithSpan)
 import Reussir.Parser.Types.Stmt
 import Reussir.Parser.Types.Type (Type)
 
@@ -52,7 +52,7 @@ parseUnnamedFields = do
     types <- openParen *> parseFieldType `sepBy` comma <* closeParen
     return $ Unnamed (V.fromList types)
   where
-    parseFieldType = do
+    parseFieldType = withSpan $ do
         fld <- parseFieldFlag
         ty <- parseType
         return (ty, fld)
@@ -62,8 +62,8 @@ parseNamedFields = do
     fields <- openBody *> parseNamedField `sepBy` comma <* closeBody
     return $ Named (V.fromList fields)
 
-parseNamedField :: Parser (Identifier, Type, Bool)
-parseNamedField = do
+parseNamedField :: Parser (WithSpan (Identifier, Type, Bool))
+parseNamedField = withSpan $ do
     name <- parseIdentifier <* colon
     fld <- parseFieldFlag
     ty <- parseType
@@ -109,7 +109,7 @@ parseEnumDecRest vis = do
     cap <- parseCapability Shared
     name <- parseIdentifier
     tyvars <- openAngle *> parseGenericParam `sepBy` comma <* closeAngle
-    body <- openBody *> parseEnumConstructor `sepBy` comma <* closeBody
+    body <- openBody *> (withSpan parseEnumConstructor) `sepBy` comma <* closeBody
 
     let fields = Variants $ V.fromList body
     return $ RecordStmt $ Record name tyvars fields EnumKind vis cap

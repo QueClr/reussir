@@ -428,9 +428,9 @@ inferType (Syn.AccessChain baseExpr accesses) = do
                         let subst = IntMap.fromList $ zip (map (\(_, GenericID gid) -> fromIntegral gid) $ recordTyParams record) args
                         case (recordFields record, access) of
                             (Named fields, Access.Named name) -> do
-                                case V.findIndex (\(n, _, _) -> n == name) fields of
+                                case V.findIndex (\(WithSpan (n, _, _) _ _) -> n == name) fields of
                                     Just idx -> do
-                                        let (_, fieldTy, nullable) = fields `V.unsafeIndex` idx
+                                        let WithSpan (_, fieldTy, nullable) _ _ = fields `V.unsafeIndex` idx
                                         fieldTy' <- projectType nullable $ substituteGenericMap fieldTy subst
                                         L.logTrace_ $ "Field type: " <> T.pack (show fieldTy')
                                         return (fieldTy', idx : acc)
@@ -440,7 +440,7 @@ inferType (Syn.AccessChain baseExpr accesses) = do
                             (Unnamed fields, Access.Unnamed idx) -> do
                                 let idxInt = fromIntegral idx
                                 case fields V.!? idxInt of
-                                    Just (fieldTy, nullable) -> do
+                                    Just (WithSpan (fieldTy, nullable) _ _) -> do
                                         fieldTy' <- projectType nullable $ substituteGenericMap fieldTy subst
                                         return (fieldTy', idxInt : acc)
                                     Nothing -> do
@@ -867,9 +867,9 @@ inferTypeForNormalCtorCall
                     let genericMap = recordGenericMap record tyArgs'
 
                     (fields, variantInfo) <- case (recordKind record, recordFields record) of
-                        (StructKind, Named fs) -> return (V.toList $ V.map (\(n, t, f) -> (Just n, t, f)) fs, Nothing)
-                        (StructKind, Unnamed fs) -> return (V.toList $ V.map (\(t, f) -> (Nothing, t, f)) fs, Nothing)
-                        (EnumVariant parentPath idx, Unnamed fs) -> return (V.toList $ V.map (\(t, f) -> (Nothing, t, f)) fs, Just (parentPath, idx))
+                        (StructKind, Named fs) -> return (V.toList $ V.map (\(WithSpan (n, t, f) _ _) -> (Just n, t, f)) fs, Nothing)
+                        (StructKind, Unnamed fs) -> return (V.toList $ V.map (\(WithSpan (t, f) _ _) -> (Nothing, t, f)) fs, Nothing)
+                        (EnumVariant parentPath idx, Unnamed fs) -> return (V.toList $ V.map (\(WithSpan (t, f) _ _) -> (Nothing, t, f)) fs, Just (parentPath, idx))
                         (EnumVariant _ _, Named _) -> do
                             -- This should be unreachable based on current translation logic
                             addErrReportMsg "Enum variant cannot have named fields yet"

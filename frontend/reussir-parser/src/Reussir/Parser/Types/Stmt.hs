@@ -12,9 +12,9 @@ type FieldFlag = Bool
 type FlexFlag = Bool
 
 data RecordFields
-    = Named (V.Vector (Identifier, Type, FieldFlag))
-    | Unnamed (V.Vector (Type, FieldFlag))
-    | Variants (V.Vector (Identifier, V.Vector Type))
+    = Named (V.Vector (WithSpan (Identifier, Type, FieldFlag)))
+    | Unnamed (V.Vector (WithSpan (Type, FieldFlag)))
+    | Variants (V.Vector (WithSpan (Identifier, V.Vector Type)))
     deriving (Show, Eq)
 
 data RecordKind = StructKind | EnumKind deriving (Show, Eq)

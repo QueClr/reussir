@@ -1,7 +1,7 @@
 module Reussir.Core2.Data.Full.Record where
 
 import Data.HashTable.IO qualified as H
-import Data.Text qualified as T
+
 import Data.Vector.Strict qualified as V
 import Reussir.Codegen.Context.Symbol (Symbol)
 import Reussir.Codegen.Type.Data (Capability)
@@ -36,10 +36,3 @@ data Record = Record
 
 type FullRecordTable = H.CuckooHashTable Symbol Record
 type SemiRecordTable = H.CuckooHashTable Path Semi.Record
-
-data InvalidRecInstantiation = InvalidRecInstantiation
-    { invalidRecInstantiationPath :: Path
-    , invalidRecInstantiationTyArgs :: [Semi.Type]
-    , invalidRecInstantiationReason :: T.Text
-    }
-    deriving (Show, Eq)

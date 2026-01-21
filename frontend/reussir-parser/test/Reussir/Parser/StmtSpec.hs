@@ -32,7 +32,14 @@ stripExprSpans e = e
 stripStmtSpans :: Stmt -> Stmt
 stripStmtSpans (SpannedStmt (WithSpan s _ _)) = stripStmtSpans s
 stripStmtSpans (FunctionStmt f) = FunctionStmt (f{funcBody = fmap stripExprSpans (funcBody f)})
-stripStmtSpans s = s
+stripStmtSpans (RecordStmt r) = RecordStmt (r{recordFields = stripFields (recordFields r)})
+  where
+    stripFields (Named fs) = Named (V.map (\(WithSpan (n, t, f) _ _) -> WithSpan (n, t, f) 0 0) fs)
+    stripFields (Unnamed fs) = Unnamed (V.map (\(WithSpan (t, f) _ _) -> WithSpan (t, f) 0 0) fs)
+    stripFields (Variants vs) = Variants (V.map (\(WithSpan (n, ts) _ _) -> WithSpan (n, ts) 0 0) vs)
+
+dummyWithSpan :: a -> WithSpan a
+dummyWithSpan x = WithSpan x 0 0
 
 spec :: Spec
 spec = do
@@ -91,72 +98,72 @@ spec = do
 
     describe "parseStructDec" $ do
         it "parses simple struct" $
-            parse parseStructDec "" "struct Point (i32, i32)"
+            (stripStmtSpans <$> parse parseStructDec "" "struct Point (i32, i32)")
                 `shouldParse` RecordStmt
                     ( Record
                         (Identifier "Point")
                         []
-                        (Unnamed $ V.fromList [(TypeIntegral (Signed 32), False), (TypeIntegral (Signed 32), False)])
+                        (Unnamed $ V.fromList [dummyWithSpan (TypeIntegral (Signed 32), False), dummyWithSpan (TypeIntegral (Signed 32), False)])
                         StructKind
                         Private
                         Shared
                     )
 
         it "parses public struct" $
-            parse parseStructDec "" "pub struct Point (i32, i32)"
+            (stripStmtSpans <$> parse parseStructDec "" "pub struct Point (i32, i32)")
                 `shouldParse` RecordStmt
                     ( Record
                         (Identifier "Point")
                         []
-                        (Unnamed $ V.fromList [(TypeIntegral (Signed 32), False), (TypeIntegral (Signed 32), False)])
+                        (Unnamed $ V.fromList [dummyWithSpan (TypeIntegral (Signed 32), False), dummyWithSpan (TypeIntegral (Signed 32), False)])
                         StructKind
                         Public
                         Shared
                     )
 
         it "parses named struct" $
-            parse parseStructDec "" "struct Point { x: i32, y: i32 }"
+            (stripStmtSpans <$> parse parseStructDec "" "struct Point { x: i32, y: i32 }")
                 `shouldParse` RecordStmt
                     ( Record
                         (Identifier "Point")
                         []
-                        (Named $ V.fromList [(Identifier "x", TypeIntegral (Signed 32), False), (Identifier "y", TypeIntegral (Signed 32), False)])
+                        (Named $ V.fromList [dummyWithSpan (Identifier "x", TypeIntegral (Signed 32), False), dummyWithSpan (Identifier "y", TypeIntegral (Signed 32), False)])
                         StructKind
                         Private
                         Shared
                     )
 
         it "parses named struct with capabilities" $
-            parse parseStructDec "" "struct Point { x: [field] i32, y: [field] i32 }"
+            (stripStmtSpans <$> parse parseStructDec "" "struct Point { x: [field] i32, y: [field] i32 }")
                 `shouldParse` RecordStmt
                     ( Record
                         (Identifier "Point")
                         []
-                        (Named $ V.fromList [(Identifier "x", TypeIntegral (Signed 32), True), (Identifier "y", TypeIntegral (Signed 32), True)])
+                        (Named $ V.fromList [dummyWithSpan (Identifier "x", TypeIntegral (Signed 32), True), dummyWithSpan (Identifier "y", TypeIntegral (Signed 32), True)])
                         StructKind
                         Private
                         Shared
                     )
 
         it "parses unnamed struct with capabilities" $
-            parse parseStructDec "" "struct Point ([field] i32, [field] i32)"
+            (stripStmtSpans <$> parse parseStructDec "" "struct Point ([field] i32, [field] i32)")
                 `shouldParse` RecordStmt
                     ( Record
                         (Identifier "Point")
                         []
-                        (Unnamed $ V.fromList [(TypeIntegral (Signed 32), True), (TypeIntegral (Signed 32), True)])
+                        (Unnamed $ V.fromList [dummyWithSpan (TypeIntegral (Signed 32), True), dummyWithSpan (TypeIntegral (Signed 32), True)])
                         StructKind
                         Private
                         Shared
                     )
 
         it "parses struct with default capability" $
-            parse parseStructDec "" "struct [value] Point (i32, i32)"
+            (stripStmtSpans <$> parse parseStructDec "" "struct [value] Point (i32, i32)")
                 `shouldParse` RecordStmt
                     ( Record
                         (Identifier "Point")
                         []
-                        (Unnamed $ V.fromList [(TypeIntegral (Signed 32), False), (TypeIntegral (Signed 32), False)])
+                        (Unnamed $ V.fromList [dummyWithSpan (TypeIntegral (Signed 32), False), dummyWithSpan (TypeIntegral (Signed 32), False)])
                         StructKind
                         Private
                         Value
@@ -164,15 +171,15 @@ spec = do
 
     describe "parseEnumDec" $ do
         it "parses simple enum" $
-            parse parseEnumDec "" "enum Option<T> { Some(T), None }"
+            (stripStmtSpans <$> parse parseEnumDec "" "enum Option<T> { Some(T), None }")
                 `shouldParse` RecordStmt
                     ( Record
                         (Identifier "Option")
                         [(Identifier "T", [])]
                         ( Variants $
                             V.fromList
-                                [ (Identifier "Some", V.fromList [TypeExpr (Path (Identifier "T") []) []])
-                                , (Identifier "None", V.empty)
+                                [ dummyWithSpan (Identifier "Some", V.fromList [TypeExpr (Path (Identifier "T") []) []])
+                                , dummyWithSpan (Identifier "None", V.empty)
                                 ]
                         )
                         EnumKind
@@ -181,15 +188,15 @@ spec = do
                     )
 
         it "parses public enum" $
-            parse parseEnumDec "" "pub enum Result<T, E> { Ok(T), Err(E) }"
+            (stripStmtSpans <$> parse parseEnumDec "" "pub enum Result<T, E> { Ok(T), Err(E) }")
                 `shouldParse` RecordStmt
                     ( Record
                         (Identifier "Result")
                         [(Identifier "T", []), (Identifier "E", [])]
                         ( Variants $
                             V.fromList
-                                [ (Identifier "Ok", V.fromList [TypeExpr (Path (Identifier "T") []) []])
-                                , (Identifier "Err", V.fromList [TypeExpr (Path (Identifier "E") []) []])
+                                [ dummyWithSpan (Identifier "Ok", V.fromList [TypeExpr (Path (Identifier "T") []) []])
+                                , dummyWithSpan (Identifier "Err", V.fromList [TypeExpr (Path (Identifier "E") []) []])
                                 ]
                         )
                         EnumKind

@@ -6,6 +6,7 @@ module Reussir.Core2.Full.Record where
 import Control.Monad
 import Data.Either (partitionEithers)
 import Data.HashTable.IO qualified as H
+import Data.Int (Int64)
 import Data.IntMap.Strict qualified as IntMap
 import Data.Maybe (fromMaybe)
 import Data.Traversable (for)
@@ -13,7 +14,8 @@ import Data.Vector.Strict qualified as V
 import Effectful (Eff, IOE, liftIO, (:>))
 import Reussir.Codegen.Context.Symbol (verifiedSymbol)
 import Reussir.Codegen.Type (Capability (Regional))
-import Reussir.Core2.Data.Full.Record (FieldFlag, FullRecordTable, InvalidRecInstantiation (..), Record (..), RecordFields (..), RecordKind (..), SemiRecordTable)
+import Reussir.Core2.Data.Full.Error (Error (..), ErrorKind (..))
+import Reussir.Core2.Data.Full.Record (FieldFlag, FullRecordTable, Record (..), RecordFields (..), RecordKind (..), SemiRecordTable)
 import Reussir.Core2.Data.Full.Type (Type (..))
 import Reussir.Core2.Data.Generic (GenericState (..))
 import Reussir.Core2.Data.Semi.Record qualified as Semi
@@ -21,11 +23,14 @@ import Reussir.Core2.Data.Semi.Type qualified as Semi
 import Reussir.Core2.Data.UniqueID (GenericID (..))
 import Reussir.Core2.Full.Type (convertCapability, convertSemiType)
 import Reussir.Core2.Semi.Mangle (mangleABIName)
-import Reussir.Parser.Types.Lexer (Path (..))
+import Reussir.Parser.Types.Lexer (Path (..), WithSpan (..))
+import Prelude hiding (span)
 
 -- Assume that tyArgs is concrete
-instantiateRecord :: (IOE :> es) => [Semi.Type] -> SemiRecordTable -> Semi.Record -> Eff es (Either InvalidRecInstantiation Record)
-instantiateRecord tyArgs semiRecords (Semi.Record path tyParams fields kind _ cap) = do
+
+-- Assume that tyArgs is concrete
+instantiateRecord :: (IOE :> es) => (Int64, Int64) -> [Semi.Type] -> SemiRecordTable -> Semi.Record -> Eff es (Either [Error] Record)
+instantiateRecord span tyArgs semiRecords (Semi.Record path tyParams fields kind _ cap) = do
     let mangledName = mangleABIName (Semi.TypeRecord path tyArgs Semi.Irrelevant)
     let symbol = verifiedSymbol mangledName
     let genericMap =
@@ -43,7 +48,7 @@ instantiateRecord tyArgs semiRecords (Semi.Record path tyParams fields kind _ ca
                  in EnumVariant parentSymbol i
 
     case instantiatedFields of
-        Left err -> pure $ Left err
+        Left errs -> pure $ Left errs
         Right fds ->
             pure $
                 Right
@@ -69,45 +74,61 @@ instantiateRecord tyArgs semiRecords (Semi.Record path tyParams fields kind _ ca
     isRegional (TypeRc _ Regional) = True
     isRegional _ = False
 
-    validateField :: (IOE :> es') => Type -> FieldFlag -> Eff es' (Either InvalidRecInstantiation ())
-    validateField fullTy isMutable = do
+    validateField :: (IOE :> es') => Type -> FieldFlag -> Int -> Eff es' (Either Error ())
+    validateField fullTy isMutable idx = do
         let dimTy = removeTopLevelRc fullTy
         if isMutable && isRecord dimTy && not (isRegional fullTy)
-            then pure $ Left $ InvalidRecInstantiation path tyArgs "invalid capability for regional mutable field"
+            then
+                pure $
+                    Left $
+                        Error span $
+                            InvalidRecordField
+                                { recordPath = path
+                                , recordTypeArgs = V.fromList tyArgs
+                                , errorIndex = idx
+                                }
             else pure $ Right ()
 
-    instantiateField :: (IOE :> es') => IntMap.IntMap Semi.Type -> Semi.RecordFields -> Eff es' (Either InvalidRecInstantiation RecordFields)
+    instantiateField :: (IOE :> es') => IntMap.IntMap Semi.Type -> Semi.RecordFields -> Eff es' (Either [Error] RecordFields)
     instantiateField genericMap fieldsToInstantiate = case fieldsToInstantiate of
         Semi.Named fs -> do
-            results <- for fs \(name, ty, f) -> do
-                rawTy <- convertSemiType genericMap semiRecords ty
-                validation <- validateField rawTy f
-                case validation of
-                    Left err -> pure $ Left err
-                    Right () -> do
-                        let ty' = removeTopLevelRc rawTy
-                        pure $ Right (name, ty', f)
-            let (errors, successes) = partitionEithers (foldr (\x acc -> case x of Left e -> Left e : acc; Right v -> Right v : acc) [] results)
+            results <- for (zip [0 ..] (V.toList fs)) \(idx, WithSpan (name, ty, f) start end) -> do
+                rawTyResult <- convertSemiType (start, end) genericMap semiRecords ty
+                case rawTyResult of
+                    Left errs -> pure $ Left errs
+                    Right rawTy -> do
+                        validation <- validateField rawTy f idx
+                        case validation of
+                            Left err -> pure $ Left [err]
+                            Right () -> do
+                                let ty' = removeTopLevelRc rawTy
+                                pure $ Right (name, ty', f)
+            let (errors, successes) = partitionEithers results
             case errors of
-                (e : _) -> pure $ Left e
+                (_ : _) -> pure $ Left (concat errors)
                 [] -> pure $ Right (Named (V.fromList successes))
         Semi.Unnamed fs -> do
-            results <- for fs \(ty, f) -> do
-                rawTy <- convertSemiType genericMap semiRecords ty
-                validation <- validateField rawTy f
-                case validation of
-                    Left err -> pure $ Left err
-                    Right () -> do
-                        let ty' = removeTopLevelRc rawTy
-                        pure $ Right (ty', f)
-            let (errors, successes) = partitionEithers (foldr (\x acc -> case x of Left e -> Left e : acc; Right v -> Right v : acc) [] results)
+            results <- for (zip [0 ..] (V.toList fs)) \(idx, WithSpan (ty, f) start end) -> do
+                rawTyResult <- convertSemiType (start, end) genericMap semiRecords ty
+                case rawTyResult of
+                    Left errs -> pure $ Left errs
+                    Right rawTy -> do
+                        validation <- validateField rawTy f idx
+                        case validation of
+                            Left err -> pure $ Left [err]
+                            Right () -> do
+                                let ty' = removeTopLevelRc rawTy
+                                pure $ Right (ty', f)
+            let (errors, successes) = partitionEithers results
             case errors of
-                (e : _) -> pure $ Left e
+                (_ : _) -> pure $ Left (concat errors)
                 [] -> pure $ Right (Unnamed (V.fromList successes))
         Semi.Variants vs -> do
+            -- Variants usually don't have types to instantiate in this context unless they are enum variants with payloads?
+            -- Semi.Variants contains identifiers.
             let (Path base segments) = path
             let parentSegments = segments ++ [base]
-            vs' <- for vs \v -> do
+            vs' <- for vs \(WithSpan v _ _) -> do
                 let vPath = Path v parentSegments
                 let vTy = Semi.TypeRecord vPath tyArgs Semi.Irrelevant
                 let vSymbol = verifiedSymbol $ mangleABIName vTy
@@ -118,7 +139,7 @@ convertSemiRecordTable ::
     (IOE :> es) =>
     SemiRecordTable ->
     GenericState ->
-    Eff es ([InvalidRecInstantiation], FullRecordTable)
+    Eff es ([Error], FullRecordTable)
 convertSemiRecordTable semiRecords genericState = do
     fullTable <- liftIO H.new
     -- Iterate over all semi records
@@ -144,11 +165,13 @@ convertSemiRecordTable semiRecords genericState = do
             error "No solutions found for generic parameters"
         -- Instantiate and insert for each combination
         results <- for argCombinations \args -> do
-            instantiated <- instantiateRecord args semiRecords record
+            -- TODO: Use actual span from Semi.Record or context if available. Currently using (0,0) as placeholder.
+            instantiated <- instantiateRecord (0, 0) args semiRecords record
             case instantiated of
                 Right rec -> do
                     liftIO $ H.insert fullTable (recordName rec) rec
                     pure $ Right ()
-                Left err -> pure $ Left err
+                Left errs -> pure $ Left errs
 
-        pure $ partitionEithers results
+        let (errsList, successes) = partitionEithers results
+        pure (concat errsList, successes)

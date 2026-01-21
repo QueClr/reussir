@@ -344,7 +344,6 @@ scanStmtImpl (Syn.SpannedStmt s) = do
 scanStmtImpl (Syn.RecordStmt record) = do
     let name = Syn.recordName record
     let tyParams = Syn.recordTyParams record
-
     -- Translate generics
     genericsList <- mapM translateGeneric tyParams
 
@@ -352,15 +351,15 @@ scanStmtImpl (Syn.RecordStmt record) = do
     withGenericContext genericsList $ do
         (fields, variants) <- case Syn.recordFields record of
             Syn.Named fs -> do
-                fs' <- V.mapM (\(n, t, f) -> (n,,f) <$> evalType t) fs
-                return $ (Named fs', Nothing)
+                fs' <- V.mapM (\(WithSpan (n, t, f) s e) -> (\(n', t', f') -> WithSpan (n', t', f') s e) <$> ((n,,f) <$> evalType t)) fs
+                return (Named fs', Nothing)
             Syn.Unnamed fs -> do
-                fs' <- V.mapM (\(t, f) -> (,f) <$> evalType t) fs
-                return $ (Unnamed fs', Nothing)
+                fs' <- V.mapM (\(WithSpan (t, f) s e) -> (\(t', f') -> WithSpan (t', f') s e) <$> ((,f) <$> evalType t)) fs
+                return (Unnamed fs', Nothing)
             Syn.Variants vs -> do
-                vs' <- V.mapM (\(n, ts) -> (n,) <$> mapM evalType ts) vs
-                let names = V.map (\(n, _) -> n) vs'
-                return $ (Variants names, Just vs')
+                vs' <- V.mapM (\(WithSpan (n, ts) s e) -> (\(n', ts') -> WithSpan (n', ts') s e) <$> ((n,) <$> mapM evalType ts)) vs
+                let names = V.map (\(WithSpan (n, _) s e) -> WithSpan n s e) vs'
+                return (Variants names, Just vs')
 
         let kind = case Syn.recordKind record of
                 Syn.StructKind -> StructKind
@@ -380,13 +379,14 @@ scanStmtImpl (Syn.RecordStmt record) = do
         -- extended with variant name and value capability.
         case variants of
             Just vs -> do
-                V.iforM_ vs $ \variantIdx (variantName, variantFields) -> do
+                V.iforM_ vs $ \variantIdx (WithSpan (variantName, variantFields) s e) -> do
                     let variantPath = Path variantName [name] -- TODO: handle module path
+                    let fieldsWithSpan = V.map (\t -> WithSpan (t, False) s e) variantFields
                     let variantRecord =
                             Record
                                 { recordName = variantPath
                                 , recordTyParams = genericsList -- share same generics as parent
-                                , recordFields = Unnamed (V.map (,False) variantFields)
+                                , recordFields = Unnamed fieldsWithSpan
                                 , recordKind = EnumVariant{variantParent = Path name [], variantIdx}
                                 , recordVisibility = Syn.recordVisibility record
                                 , recordDefaultCap = Syn.Value

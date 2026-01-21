@@ -32,6 +32,7 @@ library
         Reussir.Core2.Data.Full.Type
         Reussir.Core2.Data.Full.Expr
         Reussir.Core2.Data.Full.Record
+        Reussir.Core2.Data.Full.Error
         Reussir.Core2.Data.Full
         Reussir.Core2.Data.Operator
         Reussir.Core2.Data.Generic

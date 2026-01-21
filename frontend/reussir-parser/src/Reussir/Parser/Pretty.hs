@@ -11,7 +11,7 @@ import Prettyprinter.Render.Terminal
 import Reussir.Parser.Types.Capability
 import Reussir.Parser.Types.Expr hiding (Named, Unnamed)
 import Reussir.Parser.Types.Expr qualified as E
-import Reussir.Parser.Types.Lexer
+import Reussir.Parser.Types.Lexer (Identifier (..), Path (..), WithSpan (..))
 import Reussir.Parser.Types.Stmt hiding (Named, Unnamed)
 import Reussir.Parser.Types.Stmt qualified as S
 import Reussir.Parser.Types.Type
@@ -194,15 +194,15 @@ instance PrettyColored Stmt where
                 <+> prettyColored name
             <> prettyGenerics tyParams
             <> case fields of
-                S.Unnamed fs -> parens (commaSep (V.map prettyUnnamedField fs))
+                S.Unnamed fs -> parens (commaSep (V.map (\(WithSpan (t, f) _ _) -> prettyUnnamedField (t, f)) fs))
                 S.Variants vs -> braces (nest 4 (hardline <> vsep (punctuate comma (map prettyVariant $ V.toList vs))) <> hardline)
                 S.Named fs -> braces (nest 4 (hardline <> vsep (punctuate comma (map prettyField $ V.toList fs))) <> hardline)
       where
         prettyGenerics [] = emptyDoc
         prettyGenerics gs = angles (commaSep (map prettyGeneric gs))
         prettyGeneric (n, bounds) = prettyColored n <> if null bounds then emptyDoc else operator ":" <+> concatWith (surround (operator "+")) (map prettyColored bounds)
-        prettyVariant (n, ts) = prettyColored n <> if null ts then emptyDoc else parens (commaSep (V.map prettyColored ts))
-        prettyField (n, t, fld) = prettyColored n <> operator ":" <+> prettyFieldFlag fld <> prettyColored t
+        prettyVariant (WithSpan (n, ts) _ _) = prettyColored n <> if null ts then emptyDoc else parens (commaSep (V.map prettyColored ts))
+        prettyField (WithSpan (n, t, fld) _ _) = prettyColored n <> operator ":" <+> prettyFieldFlag fld <> prettyColored t
         prettyUnnamedField (t, fld) = prettyFieldFlag fld <> prettyColored t
         prettyFieldFlag False = emptyDoc
         prettyFieldFlag True = brackets (keyword "field") <> space

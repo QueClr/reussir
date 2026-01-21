@@ -12,17 +12,17 @@ import Effectful.Log qualified as L
 import Effectful.Prim.IORef.Strict (readIORef')
 import Effectful.State.Static.Local qualified as State
 import Reussir.Core2.Data (GenericSolution)
-import Reussir.Core2.Data.Semi.Function (FunctionProto (..), FunctionTable (..))
 import Reussir.Core2.Data.Semi (Record (..), RecordFields (..))
 import Reussir.Core2.Data.Semi.Context (GlobalSemiEff, SemiContext (..))
 import Reussir.Core2.Data.Semi.Expr (Expr (..), ExprKind (..))
+import Reussir.Core2.Data.Semi.Function (FunctionProto (..), FunctionTable (..))
 import Reussir.Core2.Data.Semi.Type (Type (..))
 import Reussir.Core2.Data.UniqueID (GenericID (..))
 import Reussir.Core2.Generic (addConcreteFlow, addCtorLink, addDirectLink, solveGeneric)
 import Reussir.Core2.Semi.Context (addErrReport)
 import Reussir.Core2.Semi.Type (collectGenerics, isConcrete)
 import Reussir.Diagnostic.Report (Report (..), defaultText)
-import Reussir.Parser.Types.Lexer (Identifier)
+import Reussir.Parser.Types.Lexer (Identifier, WithSpan (..))
 
 -- Recursively analyze generic flow in an expression
 -- We focus on function call and ctor call: at each call site, we examine:
@@ -129,8 +129,8 @@ analyzeGenericFlowInType _ = pure ()
 
 analyzeGenericFlowInRecord :: Record -> GlobalSemiEff ()
 analyzeGenericFlowInRecord record = case recordFields record of
-    Named fs -> V.forM_ fs $ \(_, t, _) -> analyzeGenericFlowInType t
-    Unnamed fs -> V.forM_ fs $ \(t, _) -> analyzeGenericFlowInType t
+    Named fs -> V.forM_ fs $ \(WithSpan (_, t, _) _ _) -> analyzeGenericFlowInType t
+    Unnamed fs -> V.forM_ fs $ \(WithSpan (t, _) _ _) -> analyzeGenericFlowInType t
     -- no need to proceed to variants since variant share the same generics as parent record
     Variants _ -> pure ()
 

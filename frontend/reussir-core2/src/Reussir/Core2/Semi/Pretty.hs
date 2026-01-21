@@ -14,10 +14,10 @@ import Effectful.Prim.IORef.Strict (readIORef')
 import Prettyprinter
 import Prettyprinter.Render.Terminal
 import Reussir.Core2.Data.FP (FloatingPointType (..))
-import Reussir.Core2.Data.Semi.Function (FunctionProto (..))
 import Reussir.Core2.Data.Integral (IntegralType (..))
 import Reussir.Core2.Data.Operator (ArithOp (..), CmpOp (..))
 import Reussir.Core2.Data.Semi.Expr (Expr (..), ExprKind (..))
+import Reussir.Core2.Data.Semi.Function (FunctionProto (..))
 import Reussir.Core2.Data.Semi.Record (
     FieldFlag,
     Record (..),
@@ -28,7 +28,7 @@ import Reussir.Core2.Data.Semi.Type (Flexivity (..), Type (..))
 import Reussir.Core2.Data.String (StringToken (..))
 import Reussir.Core2.Data.UniqueID (GenericID (..), HoleID (..), VarID (..))
 import Reussir.Parser.Types.Capability qualified as Cap
-import Reussir.Parser.Types.Lexer (Identifier (..), Path (..))
+import Reussir.Parser.Types.Lexer (Identifier (..), Path (..), WithSpan (..))
 import Reussir.Parser.Types.Stmt (Visibility (..))
 
 -- Helper functions for styles
@@ -270,19 +270,19 @@ instance PrettyColored Record where
             fsDocs <- mapM prettyUnnamedField (V.toList fs)
             pure $ parens (commaSep fsDocs)
         prettyFields (Variants vs) = do
-            vsDocs <- mapM prettyColored (V.toList vs)
+            vsDocs <- mapM (\(WithSpan v _ _) -> prettyColored v) (V.toList vs)
             pure $ braces (nest 4 (hardline <> vsep (punctuate comma vsDocs)) <> hardline)
         prettyFields (Named fs) = do
             fsDocs <- mapM prettyField (V.toList fs)
             pure $ braces (nest 4 (hardline <> vsep (punctuate comma fsDocs)) <> hardline)
 
-        prettyField (n, t, fld) = do
+        prettyField (WithSpan (n, t, fld) _ _) = do
             nDoc <- prettyColored n
             fldDoc <- prettyFieldFlag fld
             tDoc <- prettyColored t
             pure $ nDoc <> operator ":" <+> fldDoc <> tDoc
 
-        prettyUnnamedField (t, fld) = do
+        prettyUnnamedField (WithSpan (t, fld) _ _) = do
             fldDoc <- prettyFieldFlag fld
             tDoc <- prettyColored t
             pure $ fldDoc <> tDoc
