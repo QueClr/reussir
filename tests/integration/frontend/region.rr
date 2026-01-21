@@ -10,7 +10,7 @@
 // CHECK-NEXT-DAG: }
 
 // CHECK-DAG: fn _RC25freeze_cell_with_let_expr() -> Rc<_RIC4CellyE, Rigid> {
-// CHECK-NEXT-DAG: run_region{let v0 (x) : Rc<_RIC4CellyE, Flex> = regional_function[regional](42.0 : u64) : Rc<_RIC4CellyE, Flex> in
+// CHECK-NEXT-DAG: run_region{let v0 (x) : Rc<_RIC4CellyE, Flex> = _RC17regional_function[regional](42.0 : u64) : Rc<_RIC4CellyE, Flex> in
 // CHECK-NEXT-DAG: v0} : Rc<_RIC4CellyE, Rigid>
 // CHECK-NEXT-DAG: }
 

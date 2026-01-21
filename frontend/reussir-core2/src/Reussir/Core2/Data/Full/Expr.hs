@@ -3,6 +3,7 @@ module Reussir.Core2.Data.Full.Expr where
 import Data.Int (Int64)
 import Data.Scientific (Scientific)
 import Data.Vector.Unboxed qualified as UV
+import Reussir.Codegen.Context.Symbol (Symbol)
 import Reussir.Core2.Data.Full.Type (Type)
 import Reussir.Core2.Data.Operator (ArithOp, CmpOp)
 import Reussir.Core2.Data.String (StringToken)
@@ -30,8 +31,7 @@ data ExprKind
         , letBodyExpr :: Expr
         }
     | FuncCall
-        { funcCallTarget :: Path
-        , funcCallTyArgs :: [Type]
+        { funcCallTarget :: Symbol
         , funcCallArgs :: [Expr]
         , funcCallRegional :: Bool
         }
