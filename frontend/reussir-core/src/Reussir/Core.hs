@@ -1,63 +1,80 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 
-module Reussir.Core where
+module Reussir.Core (
+    translateProgToModule,
+) where
 
-import Control.Monad (forM_)
+import Control.Monad (forM, forM_)
 import Data.Text qualified as T
-import Data.Text.IO (hPutStrLn)
-import Effectful (Eff, IOE, inject, liftIO, (:>))
+import Effectful (Eff, IOE, inject, (:>))
 import Effectful.Log qualified as L
-import Effectful.Prim (Prim)
-import Effectful.State.Static.Local (execState, runState)
-import GHC.IO.Handle.FD (stderr)
+import Effectful.Prim (runPrim)
+import Effectful.Prim.IORef.Strict (Prim)
+import Effectful.State.Static.Local (runState)
 import Reussir.Codegen qualified as IR
 import Reussir.Codegen.Context qualified as IR
-import Reussir.Core.Lowering (createLoweringState, translateModule)
-import Reussir.Core.Translation (emptyTranslationState, scanStmt, solveAllGenerics)
-import Reussir.Core.Tyck (checkFuncType)
-import Reussir.Core.Types.Lowering (currentModule)
-import Reussir.Core.Types.Translation (TranslationState (translationReports))
+import Reussir.Core.Data.Full.Context (FullContext (..))
+import Reussir.Core.Data.Semi.Context (SemiContext (translationReports))
+import Reussir.Core.Full.Conversion (convertCtx)
+import Reussir.Core.Lowering.Context
+import Reussir.Core.Lowering.Module (lowerModule)
+import Reussir.Core.Semi.Context (emptySemiContext, scanStmt)
+import Reussir.Core.Semi.FlowAnalysis (solveAllGenerics)
+import Reussir.Core.Semi.Tyck (checkFuncType)
 import Reussir.Diagnostic.Display (displayReport)
 import Reussir.Diagnostic.Repository (createRepository)
 import Reussir.Parser.Prog qualified as Syn
-import Reussir.Parser.Types.Lexer (WithSpan (spanValue))
+import Reussir.Parser.Types.Lexer (WithSpan (..))
 import Reussir.Parser.Types.Stmt qualified as Syn
+import System.IO (stderr)
+
+unspanStmt :: Syn.Stmt -> Syn.Stmt
+unspanStmt (Syn.SpannedStmt (WithSpan s _ _)) = unspanStmt s
+unspanStmt stmt = stmt
 
 translateProgToModule ::
-    (IOE :> es, Prim :> es, L.Log :> es) => FilePath -> IR.TargetSpec -> Syn.Prog -> Eff es IR.Module
-translateProgToModule filePath spec prog = do
+    (IOE :> es, Prim :> es, L.Log :> es) => IR.TargetSpec -> Syn.Prog -> Eff es (Maybe IR.Module)
+translateProgToModule spec prog = do
+    let filePath = IR.moduleFilePath spec
     L.logTrace_ $ T.pack "translateProgToModule: scanning statements for " <> T.pack filePath
     repository <- createRepository [filePath]
-    translationState <- emptyTranslationState (IR.logLevel spec) filePath
-    -- first scanAllStmt to build index
-    state <- execState translationState $ inject $ do
-        mapM_ scanStmt prog
-    -- now translate all functions
-    (genericSolutions, state') <- runState state $ do
-        L.logTrace_ (T.pack "translateProgToModule: type checking functions")
-        forM_ prog $ \stmt -> case stripSpan stmt of
-            Syn.FunctionStmt f -> do
-                _ <- inject $ checkFuncType f
-                return ()
-            _ -> return ()
-        L.logTrace_ (T.pack "translateProgToModule: solving generics")
-        inject solveAllGenerics
+    (elaborated, finalSemiCtx) <- do
+        -- 1. Semi Elab
+        initSemiState <- runPrim $ emptySemiContext (IR.logLevel spec) filePath
+        (slns, finalSemiState) <- runPrim $ runState initSemiState $ do
+            -- Scan all statements
+            forM_ prog $ \stmt -> inject $ scanStmt stmt
 
-    -- report all diagnostics
-    forM_ (translationReports state') $ \report -> do
+            -- Elaborate all functions
+            forM_ prog $ \stmt -> do
+                case unspanStmt stmt of
+                    Syn.FunctionStmt f -> do
+                        _ <- inject $ checkFuncType f
+                        return ()
+                    _ -> return ()
+
+            -- Solve generics
+            inject solveAllGenerics
+
+        case slns of
+            Nothing -> return (Nothing, finalSemiState)
+            Just solutions -> do
+                -- 2. Full Conversion
+                fullCtx <- runPrim $ convertCtx finalSemiState solutions
+                return (Just fullCtx, finalSemiState)
+
+    -- Report errors from Semi Elab
+    forM_ (translationReports finalSemiCtx) $ \report -> do
         displayReport report repository 0 stderr
-        liftIO $ hPutStrLn stderr ""
 
-    let emptyMod = IR.emptyModule spec
-    case genericSolutions of
-        Nothing -> return emptyMod
-        Just solutions -> do
-            -- Lowering to IR.Module
-            L.logTrace_ (T.pack "translateProgToModule: lowering to IR")
-            loweringState <- createLoweringState filePath repository emptyMod state'
-            loweringState' <- execState loweringState $ inject $ translateModule solutions
-            return (currentModule loweringState')
-  where
-    stripSpan :: Syn.Stmt -> Syn.Stmt
-    stripSpan (Syn.SpannedStmt s) = stripSpan (spanValue s)
-    stripSpan stmt = stmt
+    forM elaborated $ \FullContext{..} -> do
+        L.logTrace_ $ T.pack "translateProgToModule: lowering module for " <> T.pack filePath
+        loweringCtx <-
+            inject $
+                createLoweringContext
+                    repository
+                    ctxFunctions
+                    ctxRecords
+                    ctxStringUniqifier
+                    spec
+        runLoweringToModule loweringCtx lowerModule

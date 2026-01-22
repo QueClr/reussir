@@ -90,13 +90,15 @@ main = do
 
             B.withReussirLogger (argLogLevel args) "reussir-compiler" $ \logger -> do
                 runEff $ L.runLog "reussir-compiler" logger (toEffLogLevel (argLogLevel args)) $ do
-                    irModule <- runPrim $ translateProgToModule (argInputFile args) spec prog
-                    case outputTarget of
-                        MLIR -> do
-                            mlirText <- C.emitModuleToText irModule
-                            liftIO $ TIO.writeFile (argOutputFile args) mlirText
-                        Backend _ ->
-                            C.emitModuleToBackend irModule
+                    irModule <- runPrim $ translateProgToModule spec prog
+                    case irModule of
+                        Nothing -> liftIO exitFailure
+                        Just module' -> case outputTarget of
+                            MLIR -> do
+                                mlirText <- C.emitModuleToText module'
+                                liftIO $ TIO.writeFile (argOutputFile args) mlirText
+                            Backend _ ->
+                                C.emitModuleToBackend module'
   where
     toEffLogLevel :: B.LogLevel -> LogLevel
     toEffLogLevel = \case

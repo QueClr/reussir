@@ -1,157 +1,3 @@
-{- |
-Module      : Reussir.Core.Generic
-Description : Generic-variable constraint graph, growing-cycle detection, and solution propagation.
-
-This module implements a small constraint solver over *generic variables* (unification-ish
-placeholders) by building a directed graph of "flows" between generics and optionally
-annotating edges with a constructor / type template.
-
-The key ideas:
-
-1. We maintain a directed graph over 'GenericID's.
-   Each node is a generic variable, and each directed edge @u -> v@ means:
-   "information about @u@ flows into @v@".
-
-2. Edges optionally carry a constructor (a 'Type' template):
-   - @u -[Nothing]-> v@: plain flow (solutions of @u@ are also solutions of @v@)
-   - @u -[Just t]-> v@: constructor flow (solutions of @u@ can be /used to instantiate/ @t@
-     and the instantiated result flows into @v@)
-
-3. We also record direct evidence of concrete types per generic via 'addConcreteFlow'.
-
-4. A /growing cycle/ is a directed cycle that contains at least one constructor edge.
-   Such a cycle implies an infinite growth (e.g. @a = List a = List (List a) = ...@),
-   so the system is unsatisfiable (or would require recursive types / μ-types,
-   which we currently do not model). If any growing cycle exists, we return @Nothing@.
-
-5. If there is no growing cycle:
-   - SCCs (strongly connected components) formed only by non-constructor edges represent
-     generics that must share the same solution set.
-   - We compute SCCs, process them in a topological order, and propagate/instantiate
-     types along incoming edges.
-
--------------------------------------------------------------------------------
-
-Graph model
-===========
-
-Nodes:
-  - Each generic variable is a node identified by 'GenericID'.
-
-Edges:
-  - @u -> v@ (plain edge): solutions(u) ⊆ solutions(v)
-  - @u -(t)-> v@ (ctor edge): instantiate template @t@ using solutions of generics referenced
-    inside @t@ (including possibly @u@ and others), and add those instantiated types to
-    solutions(v).
-
-Concrete evidence:
-  - A generic can be seeded with concrete types (only if 'isConcrete' holds).
-
-Example (ASCII)
----------------
-
-Suppose we have generics: m0, m1, m2
-
-Plain edges:
-  m0 -----> m1
-  m1 -----> m2
-
-Ctor edge:
-  m2 -(List m2)-> m0
-
-ASCII sketch:
-
-  [m0] -----> [m1] -----> [m2]
-    ^                      |
-    |                      |
-    +------(List m2)-------+
-
-This contains a cycle and it contains a constructor edge, therefore it is a *growing cycle*.
-We reject it.
-
-Non-growing SCC example:
-
-  [m0] <----> [m1] -----> [m2]
-
-If edges m0->m1 and m1->m0 are both plain edges, then {m0,m1} is an SCC.
-They must share the same solution set, and their combined solutions flow into m2.
-
--------------------------------------------------------------------------------
-
-Algorithm overview
-==================
-
-detectGrowingCycles
--------------------
-
-We run DFS with node states:
-  * Visiting depth : currently in recursion stack, remembering DFS depth
-  * Done          : fully processed
-
-While exploring edges on the current DFS path, we additionally remember the most recent
-constructor edge encountered (and its depth), called "latest ctor edge".
-
-When we see a back edge @u -> v@ (i.e. v is Visiting), we found a directed cycle.
-Then:
-
-  1) If the back edge itself has a constructor, we immediately found a growing cycle.
-  2) Otherwise, if our latest ctor edge is deeper than the depth of v, that ctor edge lies
-     within the cycle segment v..u, so it's a growing cycle. Return that ctor edge.
-
-This returns *one* witness ctor-edge in some growing cycle.
-
-solveGeneric
----------
-
-1) Reject if any growing cycle exists.
-
-2) Compute SCCs with 'stronglyConnComp' over the plain adjacency (we ignore ctor annotation
-   for SCC computation; ctor edges still connect nodes, but SCCs with ctor edges are safe
-   only because we pre-checked "no growing cycles"; cycles may exist, but must contain
-   no ctor edges).
-
-3) Build a reverse graph (incomingEdges) so that for any node v we can efficiently enumerate
-   all incoming edges (u, ctorAnn).
-
-4) Initialize solutions with the concrete flow table.
-
-5) Process SCCs in topological order:
-   For each SCC:
-     - Let nodes = all generics in this SCC.
-     - baseTypes = union of existing solutions already present for nodes
-     - flowTypes = union of contributions from incoming edges from outside the SCC
-       * For plain edges: solutions(u)
-       * For ctor edges: instantiate(template) using solutions of generics appearing in template
-     - allTypes = nub(baseTypes ++ flowTypes)
-     - Write allTypes as the solution set for each node in SCC.
-
-Instantiation details
----------------------
-
-instantiate template t:
-  - collectVars t = all GenericID occurring in t (as TypeGeneric nodes)
-  - for each collected generic v, look up its solution set sol[v] (possibly empty)
-  - generateAssignments builds the Cartesian product of choices for all vars
-  - substituteGeneric uses each assignment to produce a fully instantiated Type
-
-Note: if some generic in template has no solutions yet, it contributes no assignments and thus
-produces no instantiated results. This naturally delays ctor instantiation until prerequisites
-arrive from earlier SCCs.
-
--------------------------------------------------------------------------------
-
-Performance notes
-=================
-
-- We store generic vars in a Seq inside an IORef for append-only allocation.
-- Each GenericVar stores its outgoing edges in a mutable HashTable.
-- We use a HashTable for solution maps as well.
-- SCC computation uses Data.Graph over an adjacency list snapshot (O(V+E)).
-- Instantiation can blow up combinatorially due to Cartesian products; this is intended
-  because the solver returns *all* possible fully-instantiated types for codegen.
-
--------------------------------------------------------------------------------
--}
 module Reussir.Core.Generic where
 
 import Control.Monad (forM, forM_, when)
@@ -165,10 +11,10 @@ import Data.Sequence qualified as Seq
 import Effectful (Eff, IOE, liftIO, (:>))
 import Effectful.Prim (Prim)
 import Effectful.Prim.IORef.Strict (modifyIORef', newIORef', readIORef')
-import Reussir.Core.Type (isConcrete, stripAllRc, substituteGeneric)
-import Reussir.Core.Types.Generic
-import Reussir.Core.Types.GenericID
-import Reussir.Core.Types.Type (Type (..))
+import Reussir.Core.Data.Generic
+import Reussir.Core.Data.Semi.Type (Type (..))
+import Reussir.Core.Data.UniqueID (GenericID (..))
+import Reussir.Core.Semi.Type (isConcrete, substituteGeneric)
 import Reussir.Parser.Types.Lexer (Identifier, Path)
 
 {- |
@@ -242,7 +88,7 @@ addLink (GenericID srcID) (GenericID tgtID) mType state = do
     let ref = getStateRef state
     vars <- readIORef' ref
     let var = Seq.index vars (fromIntegral srcID)
-    liftIO $ H.insert (genericLinks var) (GenericID tgtID) (fmap stripAllRc mType)
+    liftIO $ H.insert (genericLinks var) (GenericID tgtID) mType
 
 {- |
 Add a plain flow edge @src -> tgt@.
@@ -314,13 +160,12 @@ addConcreteFlow ::
     GenericState ->
     Eff es ()
 addConcreteFlow genericID ty state = do
-    let ty' = stripAllRc ty
-    when (isConcrete ty') $ do
+    when (isConcrete ty) $ do
         let table = concreteFlow state
         existing <- liftIO $ H.lookup table genericID
         case existing of
-            Nothing -> liftIO $ H.insert table genericID [ty']
-            Just tys -> liftIO $ H.insert table genericID (ty' : tys)
+            Nothing -> liftIO $ H.insert table genericID [ty]
+            Just tys -> liftIO $ H.insert table genericID (ty : tys)
 
 -- Internal DFS visitation state used by 'detectGrowingCycles'.
 data VisitState
@@ -451,8 +296,6 @@ This is why the solver returns *lists* of types: it explicitly enumerates altern
 Caveat:
   Instantiation may be large (cartesian product). That's intended for codegen enumeration.
 -}
-type GenericSolution = H.CuckooHashTable GenericID [Type]
-
 solveGeneric ::
     (IOE :> es, Prim :> es) =>
     GenericState ->
@@ -503,7 +346,7 @@ solveGeneric state = do
                     res <- liftIO $ H.lookup currentSol n
                     pure $ fromMaybe [] res
 
-                -- 2) Types contributed by incoming edges from outside this SCC
+                -- 2) Data contributed by incoming edges from outside this SCC
                 flowTypes <- fmap concat $ forM nodes $ \n ->
                     getIncomingTypes currentSol incomingEdges nodes n
 
@@ -558,10 +401,8 @@ solveGeneric state = do
 
     -- Collect all generics referenced in a Type tree.
     collectVars (TypeGeneric m) = [m]
-    collectVars (TypeRecord _ args) = concatMap collectVars args
+    collectVars (TypeRecord _ args _) = concatMap collectVars args
     collectVars (TypeClosure args ret) = concatMap collectVars args ++ collectVars ret
-    collectVars (TypeRc t _) = collectVars t
-    collectVars (TypeRef t _) = collectVars t
     collectVars _ = []
 
     -- \|

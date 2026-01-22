@@ -5,7 +5,7 @@ import Data.Text (pack)
 import Effectful (liftIO, runEff)
 import Effectful.Prim (runPrim)
 import Reussir.Core.Class
-import Reussir.Core.Types.Class
+import Reussir.Core.Data.Class
 import Reussir.Parser.Types.Lexer (Identifier (..), Path (..))
 import Test.Tasty
 import Test.Tasty.HUnit
