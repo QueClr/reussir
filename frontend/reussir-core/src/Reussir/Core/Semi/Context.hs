@@ -3,7 +3,6 @@
 module Reussir.Core.Semi.Context (
     withSpan,
     withMaybeSpan,
-    withVariable,
     runUnification,
     addErrReport,
     addErrReportMsg,
@@ -18,6 +17,7 @@ module Reussir.Core.Semi.Context (
     withFreshLocalContext,
     withGenericContext,
     addErrReportMsgSeq,
+    withVariable,
 ) where
 
 import Control.Monad (forM_, unless)
@@ -86,19 +86,6 @@ withSpan span' cont = do
 withMaybeSpan :: Maybe (Int64, Int64) -> SemiEff a -> SemiEff a
 withMaybeSpan Nothing cont = cont
 withMaybeSpan (Just span') cont = withSpan span' cont
-
-withVariable ::
-    Identifier ->
-    Maybe (Int64, Int64) ->
-    Semi.Type ->
-    (VarID -> SemiEff a) ->
-    SemiEff a
-withVariable varName varSpan varType cont = do
-    vt <- State.gets varTable
-    (varID, changeLog) <- newVariable varName varSpan varType vt
-    result <- cont varID
-    rollbackVar changeLog vt
-    pure result
 
 runUnification :: UnificationEff a -> SemiEff a
 runUnification eff = do
@@ -494,3 +481,16 @@ withFreshLocalContext cont = do
     localCtx <- emptyLocalSemiContext
     (res, _) <- runState localCtx $ inject cont
     return res
+
+withVariable ::
+    Identifier ->
+    Maybe (Int64, Int64) ->
+    Semi.Type ->
+    (VarID -> SemiEff a) ->
+    SemiEff a
+withVariable varName varSpan varType cont = do
+    vt <- State.gets varTable
+    (varID, changeLog) <- newVariable varName varSpan varType vt
+    result <- cont varID
+    rollbackVar changeLog vt
+    pure result
