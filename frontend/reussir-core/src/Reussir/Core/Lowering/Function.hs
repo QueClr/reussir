@@ -89,8 +89,8 @@ lowerFunction func = do
                         }
 
                 let argValues = maybeToList regionParam ++ paramValues
-                block <- lowerExprAsBlock bodyExpr argValues $ \(retVal, _) -> do
-                    let retInstr = IR.Return (Just (retVal, retTy))
+                block <- lowerExprAsBlock bodyExpr argValues $ \bodyRes -> do
+                    let retInstr = IR.Return bodyRes
                     case Full.exprSpan bodyExpr of
                         Just lastSpan -> withLocationSpan lastSpan $ addIRInstr retInstr
                         Nothing -> addIRInstr retInstr

@@ -13,6 +13,7 @@ import Effectful.Log (Log, logTrace_)
 import Effectful.Prim.IORef.Strict (Prim)
 import Effectful.Reader.Static qualified as Reader
 import Effectful.State.Static.Local qualified as State
+import GHC.Stack (HasCallStack)
 import Reussir.Codegen qualified as IR
 import Reussir.Codegen.Context qualified as IR
 import Reussir.Codegen.IR qualified as IR
@@ -20,7 +21,7 @@ import Reussir.Codegen.Location qualified as IR
 import Reussir.Codegen.Value qualified as IR
 import Reussir.Core.Data.Full.Function qualified as Full
 import Reussir.Core.Data.Full.Record qualified as Full
-import Reussir.Core.Data.Lowering.Context (GlobalLoweringEff, LocalLoweringContext (..), LoweringContext (..), LoweringEff, LoweringSpan (..))
+import Reussir.Core.Data.Lowering.Context (ExprResult, GlobalLoweringEff, LocalLoweringContext (..), LoweringContext (..), LoweringEff, LoweringSpan (..))
 import Reussir.Core.Data.String (StringUniqifier)
 import Reussir.Core.Data.UniqueID (VarID (VarID))
 import Reussir.Diagnostic.Repository (Repository, lookupRepositoryAsRange)
@@ -150,3 +151,7 @@ withVar (VarID vid) val action = do
     res <- action
     State.modify $ \s -> s{varMap = backup}
     pure res
+
+tyValOrICE :: (HasCallStack) => ExprResult -> IR.TypedValue
+tyValOrICE Nothing = error "Expected a typed value but got Nothing"
+tyValOrICE (Just val) = val

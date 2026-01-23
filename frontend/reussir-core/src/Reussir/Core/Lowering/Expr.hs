@@ -29,10 +29,10 @@ import Reussir.Core.Data.Full.Expr qualified as Full
 import Reussir.Core.Data.Full.Record qualified as Full
 import Reussir.Core.Data.Full.Type qualified as Full
 import Reussir.Core.Data.Integral qualified as Int
-import Reussir.Core.Data.Lowering.Context (LocalLoweringContext (..), LoweringContext (recordInstances), LoweringEff)
+import Reussir.Core.Data.Lowering.Context (ExprResult, LocalLoweringContext (..), LoweringContext (recordInstances), LoweringEff)
 import Reussir.Core.Data.Operator qualified as Sem
 import Reussir.Core.Data.UniqueID (VarID (..))
-import Reussir.Core.Lowering.Context (addIRInstr, materializeCurrentBlock, nextValue, withLocationMetaData, withLocationSpan, withVar)
+import Reussir.Core.Lowering.Context (addIRInstr, materializeCurrentBlock, nextValue, tyValOrICE, withLocationMetaData, withLocationSpan, withVar)
 import Reussir.Core.Lowering.Debug (typeAsDbgType)
 import Reussir.Core.Lowering.Type (convertType, mkRefType)
 import Reussir.Parser.Types.Lexer (Identifier (unIdentifier), Path (..))
@@ -44,14 +44,14 @@ createConstant ty val = do
     addIRInstr instr
     pure (value', ty)
 
-lowerExpr :: Full.Expr -> LoweringEff IR.TypedValue
+lowerExpr :: Full.Expr -> LoweringEff ExprResult
 lowerExpr (Full.Expr kind Nothing ty _) = lowerExprInBlock kind ty
 lowerExpr (Full.Expr kind (Just span') ty _) =
     withLocationSpan span' $ lowerExprInBlock kind ty
 
 -- lower expression as a block with given block arguments and finalizer
 lowerExprAsBlock ::
-    Full.Expr -> [IR.TypedValue] -> (IR.TypedValue -> LoweringEff ()) -> LoweringEff IR.Block
+    Full.Expr -> [IR.TypedValue] -> (ExprResult -> LoweringEff ()) -> LoweringEff IR.Block
 lowerExprAsBlock expr blkArgs finalizer = do
     backupBlock <- State.gets currentBlock
     State.modify $ \s -> s{currentBlock = Seq.empty}
@@ -69,12 +69,12 @@ lowerExprAsBlock expr blkArgs finalizer = do
     pure res
 
 lowerExprInBlock ::
-    Full.ExprKind -> Full.Type -> LoweringEff IR.TypedValue
+    Full.ExprKind -> Full.Type -> LoweringEff ExprResult
 lowerExprInBlock (Full.Constant value) ty = do
     ty' <- inject $ convertType ty
-    createConstant ty' value
+    Just <$> createConstant ty' value
 lowerExprInBlock (Full.Not inner) ty = do
-    (innerValue, _) <- lowerExpr inner
+    (innerValue, _) <- tyValOrICE <$> lowerExpr inner
     ty' <- inject $ convertType ty
     (one, _) <- createConstant ty' 1
     value' <- nextValue
@@ -85,9 +85,9 @@ lowerExprInBlock (Full.Not inner) ty = do
                     [(innerValue, ty'), (one, ty')]
                     [(value', ty')]
     addIRInstr call
-    pure (value', ty')
+    pure $ Just (value', ty')
 lowerExprInBlock (Full.Negate innerExpr) ty = do
-    (innerValue, _) <- lowerExpr innerExpr
+    (innerValue, _) <- tyValOrICE <$> lowerExpr innerExpr
     ty' <- inject $ convertType ty
     if IRType.isFloatType ty'
         then do
@@ -99,7 +99,7 @@ lowerExprInBlock (Full.Negate innerExpr) ty = do
                             [(innerValue, ty')]
                             [(value', ty')]
             addIRInstr call
-            pure (value', ty')
+            pure $ Just (value', ty')
         else do
             (zero, _) <- createConstant ty' 0
             value' <- nextValue
@@ -110,10 +110,10 @@ lowerExprInBlock (Full.Negate innerExpr) ty = do
                             [(zero, ty'), (innerValue, ty')]
                             [(value', ty')]
             addIRInstr call
-            pure (value', ty')
+            pure $ Just (value', ty')
 lowerExprInBlock (Full.Arith lhs op rhs) ty = do
-    (lhsVal, _) <- lowerExpr lhs
-    (rhsVal, _) <- lowerExpr rhs
+    (lhsVal, _) <- tyValOrICE <$> lowerExpr lhs
+    (rhsVal, _) <- tyValOrICE <$> lowerExpr rhs
     ty' <- inject $ convertType ty
     let intrinsic = case op of
             Sem.Add -> case ty of
@@ -146,10 +146,10 @@ lowerExprInBlock (Full.Arith lhs op rhs) ty = do
                     [(lhsVal, ty'), (rhsVal, ty')]
                     [(resVal, ty')]
     addIRInstr call
-    pure (resVal, ty')
+    pure $ Just (resVal, ty')
 lowerExprInBlock (Full.Cmp lhs op rhs) ty = do
-    (lhsVal, _) <- lowerExpr lhs
-    (rhsVal, _) <- lowerExpr rhs
+    (lhsVal, _) <- tyValOrICE <$> lowerExpr lhs
+    (rhsVal, _) <- tyValOrICE <$> lowerExpr rhs
     let lhsTy = Full.exprType lhs
     lhsIRTy <- inject $ convertType lhsTy
 
@@ -190,14 +190,14 @@ lowerExprInBlock (Full.Cmp lhs op rhs) ty = do
                     [(lhsVal, lhsIRTy), (rhsVal, lhsIRTy)]
                     [(resVal, ty')]
     addIRInstr call
-    pure (resVal, ty')
+    pure $ Just (resVal, ty')
 lowerExprInBlock (Full.Cast innerExpr targetTy) _ = do
-    (innerVal, innerIRTy) <- lowerExpr innerExpr
+    (innerVal, innerIRTy) <- tyValOrICE <$> lowerExpr innerExpr
     let innerSemTy = Full.exprType innerExpr
     targetIRTy <- inject $ convertType targetTy
 
     if innerIRTy == targetIRTy
-        then pure (innerVal, targetIRTy)
+        then pure $ Just (innerVal, targetIRTy)
         else case (innerSemTy, targetTy) of
             (Full.TypeIntegral _, Full.TypeBool) -> do
                 (zero, _) <- createConstant innerIRTy 0
@@ -209,7 +209,7 @@ lowerExprInBlock (Full.Cast innerExpr targetTy) _ = do
                                 [(innerVal, innerIRTy), (zero, innerIRTy)]
                                 [(resVal, targetIRTy)]
                 addIRInstr call
-                pure (resVal, targetIRTy)
+                pure $ Just (resVal, targetIRTy)
             _ -> do
                 let intrinsic = case (innerSemTy, targetTy) of
                         (Full.TypeIntegral (Int.Signed w1), Full.TypeIntegral (Int.Signed w2))
@@ -243,7 +243,7 @@ lowerExprInBlock (Full.Cast innerExpr targetTy) _ = do
                         IR.ICall $
                             IR.IntrinsicCall intrinsic [(innerVal, innerIRTy)] [(resVal, targetIRTy)]
                 addIRInstr call
-                pure (resVal, targetIRTy)
+                pure $ Just (resVal, targetIRTy)
 lowerExprInBlock
     ( Full.Let
             { Full.letVarID = varID
@@ -264,23 +264,25 @@ lowerExprInBlock
                         Just m ->
                             withLocationSpan (start, end) $
                                 withLocationMetaData m action
-        varValue <- makeDbgTy $ lowerExpr varExpr
+        varValue <- makeDbgTy $ tyValOrICE <$> lowerExpr varExpr
         withVar varID varValue $
             lowerExpr bodyExpr
 lowerExprInBlock (Full.Var (VarID varID)) _ = do
     varMap' <- State.gets @LocalLoweringContext varMap
     case IntMap.lookup (fromIntegral varID) varMap' of
         Nothing -> error $ "Variable not found in lowering: " ++ show varID
-        Just val -> pure val
+        Just val -> pure $ Just val
 lowerExprInBlock (Full.ScfIfExpr condExpr thenExpr elseExpr) ty = do
-    (condVal, irType) <- lowerExpr condExpr
+    (condVal, irType) <- tyValOrICE <$> lowerExpr condExpr
     returnTy <- inject $ convertType ty
-    thenBlock <- lowerExprAsBlock thenExpr [] $ \(thenVal, _) -> do
-        let retInstr = IR.Yield IR.YieldScf $ Just (thenVal, returnTy)
+    thenBlock <- lowerExprAsBlock thenExpr [] $ \thenVal -> do
+        let (thenVal', _) = tyValOrICE thenVal
+        let retInstr = IR.Yield IR.YieldScf $ Just (thenVal', returnTy)
         addIRInstr retInstr
 
-    elseBlock <- lowerExprAsBlock elseExpr [] $ \(elseVal, _) -> do
-        let retInstr = IR.Yield IR.YieldScf $ Just (elseVal, returnTy)
+    elseBlock <- lowerExprAsBlock elseExpr [] $ \elseVal -> do
+        let (elseVal', _) = tyValOrICE elseVal
+        let retInstr = IR.Yield IR.YieldScf $ Just (elseVal', returnTy)
         addIRInstr retInstr
 
     resultVal <- nextValue
@@ -291,42 +293,43 @@ lowerExprInBlock (Full.ScfIfExpr condExpr thenExpr elseExpr) ty = do
                 (Just elseBlock)
                 $ Just (resultVal, returnTy)
     addIRInstr ifInstr
-    pure (resultVal, returnTy)
+    pure $ Just (resultVal, returnTy)
 lowerExprInBlock Full.Poison ty = do
     ty' <- inject $ convertType ty
     value <- nextValue
     let intrinsicCall = IR.IntrinsicCall IR.UBPoison [] [(value, ty')]
     let instr = IR.ICall intrinsicCall
     addIRInstr instr
-    pure (value, ty')
-lowerExprInBlock (Full.IntrinsicCall path args) ty = lowerIntrinsicCallInBlock path args ty
+    pure $ Just (value, ty')
+lowerExprInBlock (Full.IntrinsicCall path args) ty =
+    Just <$> lowerIntrinsicCallInBlock path args ty
 lowerExprInBlock (Full.FuncCall callee args regional) ty = do
     -- if a function is regional, its first argument is the region handle
     handle <-
         if regional
             then maybeToList <$> State.gets regionHandle
             else pure []
-    typedArgs <- mapM lowerExpr args
+    typedArgs <- mapM (fmap tyValOrICE . lowerExpr) args
     retTy <- inject $ convertType ty
     retVal <- nextValue
     let instr = IR.FCall $ IR.FuncCall callee (handle <> typedArgs) $ Just (retVal, retTy)
     addIRInstr instr
-    pure (retVal, retTy)
+    pure $ Just (retVal, retTy)
 -- Compound CtorCall
 lowerExprInBlock (Full.CompoundCall args) ty = do
-    typedArgs <- mapM lowerExpr args
+    typedArgs <- mapM (fmap tyValOrICE . lowerExpr) args
     retTy <- inject $ convertType ty
     retVal <- nextValue
     let instr = IR.CompoundCreate typedArgs (retVal, retTy)
     addIRInstr instr
-    pure (retVal, retTy)
+    pure $ Just (retVal, retTy)
 lowerExprInBlock (Full.VariantCall variant arg) ty = do
-    typedArg <- lowerExpr arg
+    typedArg <- fmap tyValOrICE $ lowerExpr arg
     retTy <- inject $ convertType ty
     retVal <- nextValue
     let instr = IR.VariantCreate (fromIntegral variant) typedArg (retVal, retTy)
     addIRInstr instr
-    pure (retVal, retTy)
+    pure $ Just (retVal, retTy)
 lowerExprInBlock (Full.RegionRun bodyExpr) ty = do
     -- We assume region run returns a value, so we need a result type
     -- The region expression itself (bodyExpr) should have the same return type
@@ -337,21 +340,22 @@ lowerExprInBlock (Full.RegionRun bodyExpr) ty = do
     let handle = (handleValue, IR.TypeRegion)
     State.modify $ \s -> s{regionHandle = Just handle}
 
-    bodyBlock <- lowerExprAsBlock bodyExpr [handle] $ \(bodyVal, bodyTy) -> do
+    bodyBlock <- lowerExprAsBlock bodyExpr [handle] $ \bodyRes -> do
+        let (bodyVal, bodyTy) = tyValOrICE bodyRes
         addIRInstr (IR.Yield IR.YieldRegion $ Just (bodyVal, bodyTy))
 
     State.modify $ \s -> s{regionHandle = Nothing}
     let instr = IR.RegionRun bodyBlock $ Just (regionVal, regionTy)
     addIRInstr instr
-    pure (regionVal, regionTy)
+    pure $ Just (regionVal, regionTy)
 
 -- Projection chain handling
 lowerExprInBlock (Full.Proj baseExpr indices) _ = do
-    baseVal <- lowerExpr baseExpr
+    baseVal <- tyValOrICE <$> lowerExpr baseExpr
     projVal <- UV.foldM' handleProjection baseVal indices
-    loadIfRef projVal
+    Just <$> loadIfRef projVal
 lowerExprInBlock (Full.RcWrap innerExpr) ty@(Full.TypeRc _ cap) = do
-    innerVal <- lowerExpr innerExpr
+    innerVal <- tyValOrICE <$> lowerExpr innerExpr
     regionHandle <- case cap of
         IR.Flex -> State.gets regionHandle
         _ -> pure Nothing
@@ -359,14 +363,14 @@ lowerExprInBlock (Full.RcWrap innerExpr) ty@(Full.TypeRc _ cap) = do
     retTy <- inject $ convertType ty
     let instr = IR.RcCreate innerVal regionHandle (retVal, retTy)
     addIRInstr instr
-    pure (retVal, retTy)
+    pure $ Just (retVal, retTy)
 lowerExprInBlock (Full.NullableCall maybeExpr) ty = do
     retVal <- nextValue
     retTy <- inject $ convertType ty
-    maybeExpr' <- mapM lowerExpr maybeExpr
+    maybeExpr' <- mapM (fmap tyValOrICE . lowerExpr) maybeExpr
     let instr = IR.NullableCreate maybeExpr' (retVal, retTy)
     addIRInstr instr
-    pure (retVal, retTy)
+    pure $ Just (retVal, retTy)
 lowerExprInBlock kind ty =
     error $
         "Detailed lowerExprInBlock implementation missing for "
@@ -422,7 +426,7 @@ lowerIntrinsicCallInBlock (Path name ["core", "intrinsic", "math"]) args ty = do
                      in (vals, val)
                 else (args, Arith.FastMathFlag 0)
 
-    typedArgs <- mapM lowerExpr valArgs
+    typedArgs <- mapM (fmap tyValOrICE . lowerExpr) valArgs
 
     resTy <- inject $ convertType ty
     resVal <- nextValue

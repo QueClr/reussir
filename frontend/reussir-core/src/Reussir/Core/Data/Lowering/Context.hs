@@ -5,6 +5,7 @@ module Reussir.Core.Data.Lowering.Context (
     LocalLoweringContext (..),
     LoweringEff,
     GlobalLoweringEff,
+    ExprResult,
 ) where
 
 import Data.Int (Int64)
@@ -69,3 +70,5 @@ type GlobalLoweringEff =
          , Reader.Reader LoweringContext
          , State.State IR.Module
          ]
+
+type ExprResult = Maybe TypedValue
