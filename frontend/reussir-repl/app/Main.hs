@@ -4,8 +4,10 @@ module Main (main) where
 
 -- Base libraries
 import Control.Exception (SomeException, bracketOnError, catch)
+import Control.Monad (forM_, when)
 import Data.ByteString (ByteString)
 import Data.Int (Int16, Int32, Int64, Int8)
+import Data.Maybe (isNothing)
 import Data.String (IsString (fromString))
 import Data.Word (Word16, Word32, Word64, Word8)
 import Foreign (FunPtr, Ptr, nullPtr)
@@ -23,8 +25,18 @@ import System.Console.Haskeline
 import System.Console.Haskeline.IO
 
 -- Reussir
+
+import Data.HashTable.IO qualified as H
+import Data.Text.IO qualified as TIO
+import Effectful (runEff)
+import Effectful.Prim (runPrim)
+import Prettyprinter (defaultLayoutOptions, layoutPretty)
+import Prettyprinter.Render.Terminal (renderStrict)
 import Reussir.Bridge (ReussirJIT, addModule, lookupSymbol, withJIT)
 import Reussir.Bridge qualified as B
+import Reussir.Codegen.Context.Symbol (symbolText)
+import Reussir.Core.Data.Semi.Context qualified as Semi
+import Reussir.Core.Data.Semi.Function qualified as SemiFunc
 import Reussir.Core.REPL (
     ReplError (..),
     ReplState (..),
@@ -33,6 +45,7 @@ import Reussir.Core.REPL (
     compileExpression,
     initReplState,
  )
+import Reussir.Core.Semi.Pretty qualified as SemiP
 import Reussir.Parser.Prog (ReplInput (..), parseReplInput)
 import Reussir.Parser.Types.Expr qualified as P
 
@@ -94,6 +107,7 @@ placeholderCallback _ = return ""
 data Args = Args
     { argOptLevel :: B.OptOption
     , argLogLevel :: B.LogLevel
+    , argInputFile :: Maybe FilePath
     }
 
 argsParser :: Parser Args
@@ -101,6 +115,7 @@ argsParser =
     Args
         <$> option parseOptLevel (long "opt-level" <> short 'O' <> value B.OptTPDE <> help "Optimization level (none, default, aggressive, size, tpde)")
         <*> option parseLogLevel (long "log-level" <> short 'l' <> value B.LogWarning <> help "Log level (error, warning, info, debug, trace)")
+        <*> optional (strOption (long "input" <> short 'i' <> help "Input file for line-by-line execution"))
 
 parseOptLevel :: ReadM B.OptOption
 parseOptLevel = eitherReader $ \s -> case s of
@@ -137,13 +152,18 @@ main = do
         (initializeInput defaultSettings)
         cancelInput
         ( \hd -> do
-            putStrLn "Reussir REPL v0.1.0"
-            putStrLn "Type :help for available commands, :q to quit"
-            putStrLn ""
+            when (isNothing $ argInputFile args) $ do
+                putStrLn "Reussir REPL v0.1.0"
+                putStrLn "Type :help for available commands, :q to quit"
+                putStrLn ""
             state <- initReplState (argLogLevel args) "<repl>"
             -- Use () as the AST type since we're not using lazy modules
             withJIT placeholderCallback (argOptLevel args) (argLogLevel args) $ \jit ->
-                loop jit state hd >> closeInput hd
+                case argInputFile args of
+                    Just inputFile -> do
+                        content <- readFile inputFile
+                        fileLoop jit state (lines content)
+                    Nothing -> loop jit state hd >> closeInput hd
         )
 
 --------------------------------------------------------------------------------
@@ -173,6 +193,12 @@ processCommand _jit state cmd hd = case words cmd of
         newState <- initReplState (replLogLevel state) (replFilePath state)
         queryInput hd $ outputStrLn "Context cleared"
         return $ Just newState
+    [":dump", "context"] -> do
+        dumpSemiContext state
+        return $ Just state
+    [":dump", "compiled"] -> do
+        dumpCompiledFunctions state
+        return $ Just state
     _ -> do
         queryInput hd $ outputStrLn $ "Unknown command: " ++ cmd
         queryInput hd $ outputStrLn "Type :help for available commands"
@@ -183,9 +209,11 @@ helpText :: String
 helpText =
     unlines
         [ "Available commands:"
-        , "  :help      Show this help message"
-        , "  :q, :quit  Exit the REPL"
-        , "  :clear     Clear the context and start fresh"
+        , "  :help           Show this help message"
+        , "  :q, :quit       Exit the REPL"
+        , "  :clear          Clear the context and start fresh"
+        , "  :dump context   Dump the current semi-elaboration context"
+        , "  :dump compiled  List compiled functions"
         , ""
         , "Input is automatically parsed as either definitions or expressions."
         ]
@@ -221,6 +249,85 @@ loop jit state hd = do
                         loop jit state' hd
 
 --------------------------------------------------------------------------------
+-- File Input Loop
+--------------------------------------------------------------------------------
+
+fileLoop :: ReussirJIT () -> ReplState -> [String] -> IO ()
+fileLoop _ _ [] = return ()
+fileLoop jit state (line : rest)
+    | null line = fileLoop jit state rest
+    | isCommand line = do
+        -- We need a dummy InputState for processCommand, but it uses it for printing.
+        -- Commands in file mode might output to stdout.
+        -- Since processCommand uses `queryInput` which calls `withInterrupt . liftIO`,
+        -- we can construct a specialized InputState or just mock it, OR rework processCommand.
+        -- Since `processCommand` is tightly coupled with `InputState` (Haskeline), it's hard to reuse directly without a dummy.
+        -- However, for simplicity, we can just execute logic directly or create a simplified handlers.
+
+        -- IMPORTANT: processCommand uses `queryInput hd ...` to print.
+        -- We should probably refactor processCommand to return IO (Maybe ReplState) and take a printer function?
+        -- OR, simpler hack: we just handle commands that don't need input inside fileLoop/helper.
+        -- But we want to reuse logic.
+
+        -- Let's just handle specific commands here or reimplement simple dispatch for file mode
+        -- since file mode shouldn't really be interactive.
+        case words line of
+            [":q"] -> return ()
+            [":quit"] -> return ()
+            [":help"] -> putStrLn helpText >> fileLoop jit state rest
+            [":clear"] -> do
+                newState <- initReplState (replLogLevel state) (replFilePath state)
+                putStrLn "Context cleared"
+                fileLoop jit newState rest
+            [":dump", "context"] -> do
+                dumpSemiContext state
+                fileLoop jit state rest
+            [":dump", "compiled"] -> do
+                dumpCompiledFunctions state
+                fileLoop jit state rest
+            _ -> do
+                putStrLn $ "Unknown/Unsupported command in file mode: " ++ line
+                fileLoop jit state rest
+    | otherwise = do
+        result <- processInput jit state line
+        case result of
+            Left errMsg -> do
+                putStrLn errMsg
+                fileLoop jit state rest
+            Right (output, state') -> do
+                case output of
+                    Just msg -> putStrLn msg
+                    Nothing -> return ()
+                fileLoop jit state' rest
+
+--------------------------------------------------------------------------------
+-- Dump Helpers
+--------------------------------------------------------------------------------
+
+dumpSemiContext :: ReplState -> IO ()
+dumpSemiContext state = do
+    let semiCtx = replSemiContext state
+
+    putStrLn "=== Records ==="
+    records <- H.toList (Semi.knownRecords semiCtx)
+    forM_ records $ \(_, rec') -> do
+        doc <- runEff $ runPrim $ SemiP.prettyColored rec'
+        TIO.putStrLn $ renderStrict $ layoutPretty defaultLayoutOptions doc
+
+    putStrLn "\n=== Functions ==="
+    funcs <- H.toList (SemiFunc.functionProtos $ Semi.functions semiCtx)
+    forM_ funcs $ \(_, func) -> do
+        doc <- runEff $ runPrim $ SemiP.prettyColored func
+        TIO.putStrLn $ renderStrict $ layoutPretty defaultLayoutOptions doc
+
+dumpCompiledFunctions :: ReplState -> IO ()
+dumpCompiledFunctions state = do
+    putStrLn "=== Compiled Functions ==="
+    funcs <- H.toList (replCompiledFunctions state)
+    let names = map (symbolText . fst) funcs
+    mapM_ (TIO.putStrLn . (" - " <>)) names
+
+--------------------------------------------------------------------------------
 -- Input Processing
 --------------------------------------------------------------------------------
 
@@ -254,6 +361,7 @@ processAutoDetect jit state input = do
                 Right state' -> return $ Right (Just "Definition added.", state')
         Right (ReplExpr expr) -> do
             processExpressionParsed jit state input expr
+        Right EmptyLine -> return $ Right (Nothing, state)
 
 -- | Process a pre-parsed expression
 processExpressionParsed ::

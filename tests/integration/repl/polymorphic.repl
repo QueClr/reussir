@@ -1,0 +1,25 @@
+// RUN: %reussir-repl -i %s -lerror | %FileCheck %s
+
+fn cos_squared(x: f64) -> f64 { let y = core::intrinsic::math::cos(x, 127); y * y }
+// CHECK: Definition added.
+
+fn sin_squared(x: f64) -> f64 { let y = core::intrinsic::math::sin(x, 127); y * y }
+// CHECK: Definition added.
+
+:dump context
+// to ignore color, we only check the name of the function
+// CHECK-DAG: sin_squared
+// CHECK-DAG: cos_squared
+
+fn poly_add<T : Num>(x : T) -> T { (cos_squared(x as f64) + sin_squared(x as f64)) as T }
+// CHECK: Definition added.
+
+poly_add(127)
+// CHECK: 1 : i64
+
+poly_add(127.0)
+// CHECK: 1.0 : f64
+
+:dump compiled
+// CHECK-DAG: _RIC8poly_addxE
+// CHECK-DAG: _RIC8poly_adddE

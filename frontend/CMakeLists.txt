@@ -9,3 +9,4 @@ endfunction()
 
 add_frontend_target(reussir-elab)
 add_frontend_target(reussir-compiler)
+add_frontend_target(reussir-repl)

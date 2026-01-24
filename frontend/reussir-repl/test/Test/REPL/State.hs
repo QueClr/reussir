@@ -19,7 +19,7 @@ tests =
 
 testInitState :: Assertion
 testInitState = do
-    state <- initReplState LogWarning "<test>"
+    _ <- initReplState LogWarning "<test>"
     -- If we get here without exception, initialization succeeded
     assertBool "REPL state initialized" True
 

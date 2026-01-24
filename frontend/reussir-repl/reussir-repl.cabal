@@ -81,7 +81,10 @@ executable reussir-repl
         reussir-parser,
         reussir-core,
         reussir-codegen,
-        reussir-bridge
+        reussir-bridge,
+        hashtables,
+        prettyprinter,
+        prettyprinter-ansi-terminal
 
     -- Directories containing source files.
     hs-source-dirs:   app

@@ -6,6 +6,7 @@ module Reussir.Core.Semi.Pretty (
     PrettyColored (..),
 ) where
 
+import Control.Monad (zipWithM)
 import Data.Vector.Strict qualified as V
 import Data.Vector.Unboxed qualified as UV
 import Effectful (Eff, IOE, (:>))
@@ -229,6 +230,7 @@ instance PrettyColored Expr where
                 pure $
                     pathDoc
                         <> parens (commaSep argsDocs)
+            Sequence [singleton] -> prettyColored singleton
             Sequence subexprs -> do
                 subexprsDocs <- mapM prettyColored subexprs
                 pure $ braces (nest 4 (hardline <> vsep (punctuate semi subexprsDocs)) <> hardline)
@@ -299,7 +301,7 @@ instance PrettyColored FunctionProto where
         visDoc <- prettyColored vis
         nameDoc <- prettyColored name
         genericsDoc <- prettyGenerics generics
-        paramsDoc <- mapM prettyArg params
+        paramsDoc <- zipWithM prettyArg params [0 :: Int ..]
         retDoc <- prettyColored retType
         bodyExpr <- readIORef' bodyRef
         bodyDoc <- case bodyExpr of
@@ -328,10 +330,11 @@ instance PrettyColored FunctionProto where
             nDoc <- prettyColored n
             pure $ nDoc <> "@" <> pretty gid
 
-        prettyArg (n, t) = do
+        prettyArg (n, t) idx = do
             nDoc <- prettyColored n
             tDoc <- prettyColored t
-            pure $ nDoc <> operator ":" <+> tDoc
+            let indexAnnotated = "v" <> pretty idx <> space <> parens nDoc
+            pure $ indexAnnotated <> operator ":" <+> tDoc
 
 commaSep :: [Doc AnsiStyle] -> Doc AnsiStyle
 commaSep = concatWith (surround (comma <> space))

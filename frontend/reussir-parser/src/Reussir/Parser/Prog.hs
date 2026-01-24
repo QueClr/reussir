@@ -13,14 +13,15 @@ parseProg :: Parser Prog
 parseProg = space *> many parseStmt <* eof
 
 -- | REPL input can be either a statement or an expression
-data ReplInput = ReplStmt Stmt | ReplExpr Expr
+data ReplInput = ReplStmt Stmt | ReplExpr Expr | EmptyLine
     deriving (Show, Eq)
 
 {- | Parse REPL input: try statement first, then expression.
 Uses 'try' on parseStmt to allow backtracking if it fails.
 -}
 parseReplInput :: Parser ReplInput
-parseReplInput = space *> (try stmtInput <|> exprInput) <* eof
+parseReplInput = space *> (try stmtInput <|> exprInput <|> emptyLine) <* eof
   where
     stmtInput = ReplStmt <$> parseStmt
     exprInput = ReplExpr <$> parseExpr
+    emptyLine = pure EmptyLine
