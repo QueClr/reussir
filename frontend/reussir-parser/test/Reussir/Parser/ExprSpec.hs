@@ -26,6 +26,7 @@ stripExprSpans (RegionalExpr e) = RegionalExpr (stripExprSpans e)
 stripExprSpans (CtorCallExpr (CtorCall p tys args)) = CtorCallExpr (CtorCall p tys (map (\(i, e) -> (i, stripExprSpans e)) args))
 stripExprSpans (AccessChain e accesses) = AccessChain (stripExprSpans e) accesses
 stripExprSpans (ExprSeq es) = ExprSeq (map stripExprSpans es)
+stripExprSpans (Assign e1 f e2) = Assign (stripExprSpans e1) f (stripExprSpans e2)
 stripExprSpans e = e
 
 spec :: Spec
@@ -125,6 +126,11 @@ spec = do
         it "parses longer sequence" $
             (stripExprSpans <$> parse parseExprSeq "" "{ 1; 2; 3 }")
                 `shouldParse` ExprSeq [ConstExpr (ConstInt 1), ConstExpr (ConstInt 2), ConstExpr (ConstInt 3)]
+
+    describe "parseAssignExpr" $ do
+        it "parses simple assignment" $
+            (stripExprSpans <$> parse parseExpr "" "x->y := z")
+                `shouldParse` Assign (Var (Path "x" [])) (Named "y") (Var (Path "z" []))
 
     describe "parseExpr" $ do
         it "parses less than or equal with potential type arg ambiguity" $

@@ -150,6 +150,14 @@ instance PrettyColored Expr where
 
         prettyArg (Just n, e) = prettyColored n <> colon <+> prettyColored e
         prettyArg (Nothing, e) = prettyColored e
+    prettyColored (Assign e1 e2 e3) =
+        prettyColored e1
+            <> operator "->"
+            <> prettyColored e2
+            <> space
+            <> operator ":="
+            <> space
+            <> prettyColored e3
 
 instance PrettyColored Capability where
     prettyColored Unspecified = emptyDoc

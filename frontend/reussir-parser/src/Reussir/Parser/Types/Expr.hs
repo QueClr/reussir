@@ -74,4 +74,8 @@ data Expr
     | CtorCallExpr CtorCall -- std::Foo {1, 2} / Foo<i32> {x: 1, y: 2} / List<i32>::Nil / List<i32>::Cons(1, xs)
     | AccessChain Expr (Vector Access) -- foo.bar.baz.0.1
     | SpannedExpr (WithSpan Expr)
+    | -- regional assignment { x->y := z }
+      -- where x is a flex regional object, y is a mutable field and z is an expression evaluated
+      -- to a nullable regional object
+      Assign Expr Access Expr
     deriving (Show, Eq)

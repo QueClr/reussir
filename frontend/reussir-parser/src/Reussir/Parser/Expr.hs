@@ -52,6 +52,11 @@ parseLetIn = do
         ty <- parseType
         return (ty, isJust flexFlag)
 
+assignOp :: Operator Parser Expr
+assignOp = InfixN $ do
+    access <- space *> parseArrowAccess <* string ":=" <* space
+    return $ \e1 e2 -> Assign e1 access e2
+
 parseLambda :: Parser Expr
 parseLambda = do
     name <- char '|' *> space *> parseIdentifier
@@ -133,7 +138,12 @@ prefixOp :: T.Text -> UnaryOp -> Operator Parser Expr
 prefixOp symbol op = Prefix (string symbol *> space $> UnaryOpExpr op)
 
 infixLOp :: T.Text -> BinaryOp -> Operator Parser Expr
-infixLOp symbol op = InfixL (string symbol *> space $> BinOpExpr op)
+infixLOp symbol op = case symbol of
+    "-" ->
+        -- need to specially handle the ambiguity with arrow assignment
+        let sub = try $ string symbol *> notFollowedBy (char '>')
+         in InfixL (sub *> space $> BinOpExpr op)
+    _ -> InfixL (string symbol *> space $> BinOpExpr op)
 
 infixNOp :: T.Text -> BinaryOp -> Operator Parser Expr
 infixNOp symbol op = InfixN (string symbol *> space $> BinOpExpr op)
@@ -146,6 +156,13 @@ castOp = Postfix $ do
 parseAccess :: Parser Access
 parseAccess =
     dot
+        *> ( (Named <$> parseIdentifier)
+                <|> (Unnamed . read <$> (some digitChar <* space))
+           )
+
+parseArrowAccess :: Parser Access
+parseArrowAccess =
+    arrow
         *> ( (Named <$> parseIdentifier)
                 <|> (Unnamed . read <$> (some digitChar <* space))
            )
@@ -185,6 +202,9 @@ exprOpTable =
         ]
     ,
         [ infixLOp "||" Or
+        ]
+    ,
+        [ assignOp
         ]
     ]
 

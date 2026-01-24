@@ -17,6 +17,7 @@ module Reussir.Parser.Lexer (
     openAngle,
     closeAngle,
     rightArrow,
+    arrow,
     dot,
 
     -- * Identifiers and paths
@@ -98,6 +99,10 @@ rightArrow = string "->" *> space
 -- | Parse a dot '.' followed by whitespace.
 dot :: Parser ()
 dot = char '.' *> space
+
+-- | Parse an arrow '->' followed by whitespace.
+arrow :: Parser ()
+arrow = string "->" *> space
 
 {- | Parse an identifier according to Unicode XID (eXtended IDentifier) rules.
 An identifier must start with a character matching 'isXIDStart' and
