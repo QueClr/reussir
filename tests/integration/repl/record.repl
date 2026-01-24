@@ -1,4 +1,4 @@
-// RUN: %reussir-repl -i %s -lerror | %FileCheck %s
+// RUN: %reussir-repl -i %s -lerror -Odefault | %FileCheck %s
 
 struct [value] Point { x : i64, y : i64 }
 

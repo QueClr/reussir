@@ -1,4 +1,4 @@
-// RUN: %reussir-repl -i %s -lerror | %FileCheck %s
+// RUN: %reussir-repl -i %s -lerror -Odefault | %FileCheck %s
 
 fn cos_squared(x: f64) -> f64 { let y = core::intrinsic::math::cos(x, 127); y * y }
 // CHECK: Definition added.
