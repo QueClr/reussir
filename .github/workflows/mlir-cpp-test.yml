@@ -32,9 +32,9 @@ jobs:
             ~/.local/state/cabal
             dist-newstyle
             ~/.ghcup
-          key: ${{ runner.os }}-${{ runner.arch }}-cabal-${{ hashFiles('**/*.cabal', 'cabal.project') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-llvm-${{ matrix.llvm-version }}-cabal-${{ hashFiles('**/*.cabal', 'cabal.project') }}
           restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-cabal-
+            ${{ runner.os }}-${{ runner.arch }}-llvm-${{ matrix.llvm-version }}-cabal-
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
