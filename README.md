@@ -158,30 +158,38 @@ cargo miri test
 ```
 reussir/
 ├── frontend/                 # Haskell frontend
-│   ├── reussir-parser/       # Parser and lexer
-│   ├── reussir-codegen/      # MLIR code generation
 │   ├── reussir-bridge/       # C++/MLIR FFI bridge
+│   ├── reussir-codegen/      # MLIR code generation
+│   ├── reussir-core/         # Core type checking and elaboration
+│   ├── reussir-diagnostic/   # Error reporting and diagnostics
+│   ├── reussir-parser/       # Parser and lexer
 │   └── reussir-repl/         # Interactive REPL
 ├── include/                  # C++ headers
 │   └── Reussir/
-│       ├── IR/               # MLIR dialect definitions
+│       ├── Analysis/         # Analysis passes
 │       ├── Conversion/       # Conversion passes
-│       └── Analysis/         # Analysis passes
+│       ├── IR/               # MLIR dialect definitions
+│       └── Support/          # Support utilities
 ├── lib/                      # C++ implementation
-│   ├── IR/                   # Dialect implementation
+│   ├── Analysis/             # Analysis pass implementations
+│   ├── Bridge/               # JIT engine and bridges
 │   ├── Conversion/           # Pass implementations
-│   └── Bridge/               # JIT engine and bridges
+│   ├── IR/                   # Dialect implementation
+│   └── RustCompiler/         # Rust compilation support
 ├── runtime/                  # Rust runtime library
 │   └── src/
+│       ├── alloc.rs          # Memory allocation
+│       ├── collections/      # Runtime collections
+│       ├── nullable.rs       # Nullable type support
 │       ├── rc.rs             # Reference counting
-│       ├── region/           # Region-based allocation
-│       └── collections/      # Runtime collections
+│       └── region/           # Region-based allocation
 ├── tool/                     # Compiler tools
 │   ├── reussir-opt/          # MLIR optimizer
 │   └── reussir-translate/    # MLIR translator
 ├── tests/
 │   ├── integration/          # lit-based integration tests
 │   └── unittest/             # C++ unit tests
+├── www/                      # Documentation source
 ├── flake.nix                 # Nix flake configuration
 └── cabal.project             # Cabal project file
 ```
