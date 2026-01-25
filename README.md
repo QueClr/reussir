@@ -238,6 +238,7 @@ The project runs automated tests on every push:
 | MinGW Clang64 | Windows 2025 | Full pipeline with MSYS2 |
 | Haskell Frontend | Ubuntu 24.04 ARM | Cabal build & test in Nix |
 | Miri Tests | Ubuntu Latest | Runtime UB detection |
+| MacOS | MacOS 14 | Full pipeline with Homebrew vendored dependencies |
 
 ## Contributing
 
