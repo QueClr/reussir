@@ -1,3 +1,4 @@
+{-# LANGUAGE CApiFFI #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Main (main) where
@@ -10,7 +11,8 @@ import Data.Int (Int16, Int32, Int64, Int8)
 import Data.Maybe (isNothing)
 import Data.String (IsString (fromString))
 import Data.Word (Word16, Word32, Word64, Word8)
-import Foreign (FunPtr, Ptr, nullPtr)
+import Foreign (FunPtr, Ptr, Storable (..), alloca, nullPtr)
+import Foreign.C.String (peekCStringLen)
 import Foreign.Ptr (castPtrToFunPtr)
 
 -- Text
@@ -48,6 +50,7 @@ import Reussir.Core.REPL (
 import Reussir.Core.Semi.Pretty qualified as SemiP
 import Reussir.Parser.Prog (ReplInput (..), parseReplInput)
 import Reussir.Parser.Types.Expr qualified as P
+import Foreign.C (CChar, CSize)
 
 --------------------------------------------------------------------------------
 -- Foreign function imports for different result types
@@ -88,6 +91,24 @@ foreign import ccall "dynamic"
 
 foreign import ccall "dynamic"
     callUnitFunc :: FunPtr (IO ()) -> IO ()
+
+-- | Representation of the str type from Reussir (ptr, len pair)
+data StrResult = StrResult {-# UNPACK #-} !(Ptr CChar) {-# UNPACK #-} !CSize
+
+instance Storable StrResult where
+    sizeOf _ = sizeOf (undefined :: Ptr CChar) + sizeOf (undefined :: CSize)
+    alignment _ = alignment (undefined :: Ptr CChar)
+    peek p = do
+        ptr <- peekByteOff p 0
+        len <- peekByteOff p $ sizeOf (undefined :: Ptr CChar)
+        return $ StrResult ptr len
+    poke p (StrResult ptr len) = do
+        pokeByteOff p 0 ptr
+        pokeByteOff p (sizeOf (undefined :: Ptr CChar)) len
+
+-- | C helper function to call a JIT function returning a str type
+foreign import capi "Reussir/Bridge.h reussir_bridge_call_str_func"
+    c_reussir_bridge_call_str_func :: Ptr () -> Ptr StrResult -> IO ()
 
 --------------------------------------------------------------------------------
 -- Placeholder callback for lazy module loading
@@ -454,6 +475,14 @@ executeWithResultKind sym resultKind = case resultKind of
     ResultUnit -> do
         callUnitFunc (castPtrToFunPtr sym)
         return "()"
+    ResultStr -> do
+        -- String is returned as a struct { ptr, len }
+        -- Use the C helper function to call the JIT'd function and capture the result
+        alloca $ \resultPtr -> do
+            c_reussir_bridge_call_str_func sym resultPtr
+            StrResult ptrWord lenWord <- peek resultPtr
+            strContent <- peekCStringLen (ptrWord, fromIntegral lenWord)
+            return $ show strContent ++ " : str"
     ResultOther tyName -> do
         -- For non-primitive types, we can't easily print the value
         -- Just indicate the expression was evaluated
