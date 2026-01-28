@@ -43,3 +43,7 @@ errorKindToText (UnknownGeneric (GenericID gid)) =
     "Unknown generic ID: " <> T.pack (show gid)
 errorKindToText (InvalidCapability path cap) =
     "Invalid capability " <> T.pack (show cap) <> " for record " <> T.pack (show path)
+errorKindToText InvalidAssignSourceCapability =
+    "Assignment source must be Nullable<Rc<T, Flex>> (flex capability required)"
+errorKindToText InvalidAssignSourceNotRegional =
+    "Assignment source inner type must be a regional record"

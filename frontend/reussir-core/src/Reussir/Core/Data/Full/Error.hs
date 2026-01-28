@@ -22,3 +22,7 @@ data ErrorKind
     | InvalidNullableType Semi.Type
     | UnknownGeneric GenericID
     | InvalidCapability Path Syn.Capability
+    | InvalidAssignSourceCapability
+        -- ^ Source of assignment is not Nullable<Rc<T, Flex>>
+    | InvalidAssignSourceNotRegional
+        -- ^ Source of assignment inner type is not a regional record

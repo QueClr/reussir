@@ -7,7 +7,9 @@ import Data.Maybe (fromMaybe)
 import Effectful (inject)
 import Effectful.State.Static.Local qualified as State
 import Reussir.Codegen.Context.Symbol (verifiedSymbol)
+import Reussir.Codegen.Type.Data (Capability (..))
 import Reussir.Core.Data.Full.Context (FullContext (..), FullEff, LocalFullContext (..))
+import Reussir.Core.Data.Full.Error (Error (..), ErrorKind (..))
 import Reussir.Core.Data.Full.Expr (Expr (..), ExprKind (..))
 import Reussir.Core.Data.Full.Type (Type (..))
 import Reussir.Core.Data.Semi.Expr qualified as SemiExpr
@@ -68,12 +70,21 @@ convertSemiExpr semiExpr = do
                     <$> convertSemiExpr e
                     <*> pure indices
                     >>= exprWithSpan ty
-            SemiExpr.Assign e1 idx e2 ->
-                Assign
-                    <$> convertSemiExpr e1
-                    <*> pure idx
-                    <*> convertSemiExpr e2
-                    >>= exprWithSpan ty
+            -- Check e2 is indeed a Nullable<Rc<T, flex>>, where T is a record type with regional defaultCap,
+            -- and the same as the raw field (not the wrapped field) at index idx of e1.
+            SemiExpr.Assign e1 idx e2 -> do
+                e1' <- convertSemiExpr e1
+                e2' <- convertSemiExpr e2
+                -- Validate e2's type is Nullable<Rc<T, Flex>>
+                span' <- State.gets currentSpan
+                let srcTy = exprType e2'
+                case srcTy of
+                    TypeNullable (TypeRc _ Flex) -> pure ()
+                    TypeNullable (TypeRc _ _) -> do
+                        inject $ addError (Error (fromMaybe (0, 0) span') InvalidAssignSourceCapability)
+                    _ -> do
+                        inject $ addError (Error (fromMaybe (0, 0) span') InvalidAssignSourceNotRegional)
+                exprWithSpan ty $ Assign e1' idx e2'
             SemiExpr.Let{..} -> do
                 varExpr' <- convertSemiExpr letVarExpr
                 exprWithSpan ty $ Let letVarSpan letVarID letVarName varExpr'

@@ -401,45 +401,8 @@ inferType (Syn.AccessChain baseExpr accesses) = do
     exprWithSpan projectedTy $ Proj baseExpr' (UV.fromList $ reverse indices)
   where
     resolveAccess (currentTy, acc) access = do
-        case currentTy of
-            TypeRecord path args _ -> do
-                knownRecords <- State.gets knownRecords
-                liftIO (H.lookup knownRecords path) >>= \case
-                    Just record -> do
-                        let subst = IntMap.fromList $ zip (map (\(_, GenericID gid) -> fromIntegral gid) $ recordTyParams record) args
-                        fieldsMaybe <- readIORef' (recordFields record)
-                        case (fieldsMaybe, access) of
-                            (Just (Named fields), Access.Named name) -> do
-                                case V.findIndex (\(WithSpan (n, _, _) _ _) -> n == name) fields of
-                                    Just idx -> do
-                                        let WithSpan (_, fieldTy, nullable) _ _ = fields `V.unsafeIndex` idx
-                                        fieldTy' <- projectType nullable $ substituteGenericMap fieldTy subst
-                                        L.logTrace_ $ "Field type: " <> T.pack (show fieldTy')
-                                        return (fieldTy', idx : acc)
-                                    Nothing -> do
-                                        addErrReportMsg $ "Field not found: " <> unIdentifier name
-                                        return (TypeBottom, -1 : acc)
-                            (Just (Unnamed fields), Access.Unnamed idx) -> do
-                                let idxInt = fromIntegral idx
-                                case fields V.!? idxInt of
-                                    Just (WithSpan (fieldTy, nullable) _ _) -> do
-                                        fieldTy' <- projectType nullable $ substituteGenericMap fieldTy subst
-                                        return (fieldTy', idxInt : acc)
-                                    Nothing -> do
-                                        addErrReportMsg $ "Field index out of bounds: " <> T.pack (show idx)
-                                        return (TypeBottom, -1 : acc)
-                            (Nothing, _) -> do
-                                addErrReportMsg "Record fields not populated"
-                                return (TypeBottom, -1 : acc)
-                            _ -> do
-                                addErrReportMsg "Invalid access type for record kind"
-                                return (TypeBottom, -1 : acc)
-                    Nothing -> do
-                        addErrReportMsg $ "Unknown record: " <> T.pack (show path)
-                        return (TypeBottom, -1 : acc)
-            _ -> do
-                addErrReportMsg "Accessing field of non-record type"
-                return (TypeBottom, -1 : acc)
+        (idx, fieldTy) <- resolveSingleAccess currentTy access
+        return (fieldTy, idx : acc)
 -- Function call:
 --            Г |- f : (T1, T2, ..., Tn) -> T, Г |- ei : Ti
 --  ────────────────────────────────────────────────────────────────────────────
@@ -498,6 +461,28 @@ inferType
         let nullableTy = TypeNullable expectedTy
         exprWithSpan nullableTy $ NullableCall (Just innerExpr')
 inferType (Syn.CtorCallExpr call) = inferTypeForNormalCtorCall call
+inferType (Syn.Assign dst field src) = do
+    -- Infer dst and check it is a record with flex annotation
+    dst' <- inferType dst
+    let dstTy = exprType dst'
+    dstTy' <- runUnification $ force dstTy
+    case dstTy' of
+        TypeRecord _ _ Flex -> do
+            -- Resolve field and check it is mutable
+            (field', rawFieldTy, isMutable) <- resolveSingleAccessForAssign dstTy' field
+            unless isMutable $ do
+                addErrReportMsg "Cannot assign to immutable field"
+            -- The projected type for mutable fields is Nullable<rawFieldTy>
+            let projectedTy = TypeNullable rawFieldTy
+            src' <- checkType src projectedTy
+            exprWithSpan TypeUnit $ Assign dst' field' src'
+        TypeRecord _ _ _ -> do
+            addErrReportMsg "Assignment target must be a flex record"
+            exprWithSpan TypeBottom Poison
+        TypeBottom -> exprWithSpan TypeBottom Poison
+        _ -> do
+            addErrReportMsg "Assignment target must be a record type"
+            exprWithSpan TypeBottom Poison
 inferType (Syn.ExprSeq exprs) = do
     inferTypeForSequence exprs []
 -- Advance the span in the context and continue on inner expression
@@ -821,6 +806,92 @@ projectType nullable ty@(TypeRecord path _ _) = do
                     return TypeBottom
                 (_, False) -> return ty
 projectType _ ty = return ty
+
+-- | Resolve a single field access on a record type to its index and projected type
+resolveSingleAccess :: Type -> Access.Access -> SemiEff (Int, Type)
+resolveSingleAccess currentTy access = do
+    case currentTy of
+        TypeRecord path args _ -> do
+            knownRecords <- State.gets knownRecords
+            liftIO (H.lookup knownRecords path) >>= \case
+                Just record -> do
+                    let subst = IntMap.fromList $ zip (map (\(_, GenericID gid) -> fromIntegral gid) $ recordTyParams record) args
+                    fieldsMaybe <- readIORef' (recordFields record)
+                    case (fieldsMaybe, access) of
+                        (Just (Named fields), Access.Named name) -> do
+                            case V.findIndex (\(WithSpan (n, _, _) _ _) -> n == name) fields of
+                                Just idx -> do
+                                    let WithSpan (_, fieldTy, nullable) _ _ = fields `V.unsafeIndex` idx
+                                    fieldTy' <- projectType nullable $ substituteGenericMap fieldTy subst
+                                    L.logTrace_ $ "Field type: " <> T.pack (show fieldTy')
+                                    return (idx, fieldTy')
+                                Nothing -> do
+                                    addErrReportMsg $ "Field not found: " <> unIdentifier name
+                                    return (-1, TypeBottom)
+                        (Just (Unnamed fields), Access.Unnamed idx) -> do
+                            let idxInt = fromIntegral idx
+                            case fields V.!? idxInt of
+                                Just (WithSpan (fieldTy, nullable) _ _) -> do
+                                    fieldTy' <- projectType nullable $ substituteGenericMap fieldTy subst
+                                    return (idxInt, fieldTy')
+                                Nothing -> do
+                                    addErrReportMsg $ "Field index out of bounds: " <> T.pack (show idx)
+                                    return (-1, TypeBottom)
+                        (Nothing, _) -> do
+                            addErrReportMsg "Record fields not populated"
+                            return (-1, TypeBottom)
+                        _ -> do
+                            addErrReportMsg "Invalid access type for record kind"
+                            return (-1, TypeBottom)
+                Nothing -> do
+                    addErrReportMsg $ "Unknown record: " <> T.pack (show path)
+                    return (-1, TypeBottom)
+        _ -> do
+            addErrReportMsg "Accessing field of non-record type"
+            return (-1, TypeBottom)
+
+-- | Resolve a single field access for assignment. Returns (index, rawFieldType, isMutable).
+-- The rawFieldType is the field type before any nullable wrapping.
+resolveSingleAccessForAssign :: Type -> Access.Access -> SemiEff (Int, Type, Bool)
+resolveSingleAccessForAssign currentTy access = do
+    case currentTy of
+        TypeRecord path args _ -> do
+            knownRecords <- State.gets knownRecords
+            liftIO (H.lookup knownRecords path) >>= \case
+                Just record -> do
+                    let subst = IntMap.fromList $ zip (map (\(_, GenericID gid) -> fromIntegral gid) $ recordTyParams record) args
+                    fieldsMaybe <- readIORef' (recordFields record)
+                    case (fieldsMaybe, access) of
+                        (Just (Named fields), Access.Named name) -> do
+                            case V.findIndex (\(WithSpan (n, _, _) _ _) -> n == name) fields of
+                                Just idx -> do
+                                    let WithSpan (_, fieldTy, isMutable) _ _ = fields `V.unsafeIndex` idx
+                                    let rawFieldTy = substituteGenericMap fieldTy subst
+                                    return (idx, rawFieldTy, isMutable)
+                                Nothing -> do
+                                    addErrReportMsg $ "Field not found: " <> unIdentifier name
+                                    return (-1, TypeBottom, False)
+                        (Just (Unnamed fields), Access.Unnamed idx) -> do
+                            let idxInt = fromIntegral idx
+                            case fields V.!? idxInt of
+                                Just (WithSpan (fieldTy, isMutable) _ _) -> do
+                                    let rawFieldTy = substituteGenericMap fieldTy subst
+                                    return (idxInt, rawFieldTy, isMutable)
+                                Nothing -> do
+                                    addErrReportMsg $ "Field index out of bounds: " <> T.pack (show idx)
+                                    return (-1, TypeBottom, False)
+                        (Nothing, _) -> do
+                            addErrReportMsg "Record fields not populated"
+                            return (-1, TypeBottom, False)
+                        _ -> do
+                            addErrReportMsg "Invalid access type for record kind"
+                            return (-1, TypeBottom, False)
+                Nothing -> do
+                    addErrReportMsg $ "Unknown record: " <> T.pack (show path)
+                    return (-1, TypeBottom, False)
+        _ -> do
+            addErrReportMsg "Accessing field of non-record type"
+            return (-1, TypeBottom, False)
 
 -- | Helper function to infer the type of a normal constructor call
 inferTypeForNormalCtorCall :: Syn.CtorCall -> SemiEff Expr

@@ -176,7 +176,7 @@ instance PrettyColored Expr where
             Assign e1 idx e2 -> do
                 e1Doc <- prettyColored e1
                 e2Doc <- prettyColored e2
-                pure $ e1Doc <> "." <> pretty idx <+> operator "=" <+> e2Doc
+                pure $ e1Doc <> brackets (pretty idx) <+> operator ":=" <+> e2Doc
             Let _ (VarID vid) name val -> do
                 nameDoc <- prettyColored name
                 valTypeDoc <- prettyColored (exprType val)

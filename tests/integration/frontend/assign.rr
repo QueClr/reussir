@@ -1,0 +1,58 @@
+// RUN: %reussir-elab --mode semi %s | %FileCheck %s --check-prefix=SEMI
+// RUN: %reussir-elab --mode full %s | %FileCheck %s --check-prefix=FULL
+struct [regional] DLLink<T> {
+    val: T,
+    next: [field] DLLink<T>,
+    prev: [field] DLLink<T>
+}
+
+regional fn new<T>(val: T) -> [flex] DLLink<T> {
+    DLLink {
+        val: val,
+        next: Nullable::Null {},
+        prev: Nullable::Null {}
+    }
+}
+
+regional fn push_back_assuming_tail<T>(cursor : [flex] DLLink<T>, elem : T) {
+    let new_node = new(elem);
+    new_node->prev := Nullable::NonNull{cursor};
+    cursor->next := Nullable::NonNull{new_node};
+}
+
+fn foo() -> DLLink<i32> {
+    regional {
+        let a = new(1);
+        push_back_assuming_tail(a, 2);
+        a
+    }
+}
+
+// Semi elaboration checks
+// SEMI-DAG: struct [regional] DLLink<T@0>{
+// SEMI-DAG:     val: T0,
+// SEMI-DAG:     next: [field] DLLink[regional]<T0>,
+// SEMI-DAG:     prev: [field] DLLink[regional]<T0>
+// SEMI-DAG: }
+
+// SEMI-DAG: regional fn push_back_assuming_tail<T@2>(v0 (cursor): DLLink[flex]<T2>, v1 (elem): T2) -> unit
+// SEMI-DAG: v2[2] := nonnull{v0} : Nullable<DLLink[flex]<T2>> : unit
+// SEMI-DAG: v0[1] := nonnull{v2} : Nullable<DLLink[flex]<T2>> : unit
+
+// SEMI-DAG: regional fn new<T@1>(v0 (val): T1) -> DLLink[flex]<T1>
+
+// SEMI-DAG: fn foo() -> DLLink[rigid]<i32>
+// SEMI-DAG: run_region
+
+// Full elaboration checks
+// FULL-DAG: struct _RIC6DLLinklE (aka DLLink<i32>)
+
+// FULL-DAG: regional fn _RIC23push_back_assuming_taillE<i32>(cursor: Rc<_RIC6DLLinklE, Flex>, elem: i32) -> unit
+// FULL-DAG: v2.2 = nonnull{v0} : Nullable<Rc<_RIC6DLLinklE, Flex>> : unit
+// FULL-DAG: v0.1 = nonnull{v2} : Nullable<Rc<_RIC6DLLinklE, Flex>> : unit
+
+// FULL-DAG: regional fn _RIC3newlE<i32>(val: i32) -> Rc<_RIC6DLLinklE, Flex>
+// FULL-DAG: rc_wrap(compound
+
+// FULL-DAG: fn _RC3foo() -> Rc<_RIC6DLLinklE, Rigid>
+// FULL-DAG: run_region
