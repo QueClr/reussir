@@ -411,21 +411,20 @@ void reussir_bridge_compile_for_target(
   //    create an LLVM TargetMachine to derive the data layout string.
   std::string triple = target_triple;
   llvm::StringRef cpu = target_cpu;
-
+#if LLVM_VERSION_MAJOR >= 21
+  auto targetTriple = llvm::Triple{llvm::StringRef{triple}};
+#else
+  llvm::StringRef targetTriple = triple;
+#endif
   std::string error;
   const llvm::Target *llvmTarget =
-      llvm::TargetRegistry::lookupTarget(triple, error);
+      llvm::TargetRegistry::lookupTarget(targetTriple, error);
   if (!llvmTarget) {
     spdlog::error("LLVM target lookup failed: {}", error);
     return;
   }
   spdlog::info("LLVM target lookup succeeded.");
   llvm::TargetOptions targetOptions;
-#if LLVM_VERSION_MAJOR >= 21
-  auto targetTriple = llvm::Triple{llvm::StringRef{triple}};
-#else
-  llvm::StringRef targetTriple = triple;
-#endif
   auto tm =
       std::unique_ptr<llvm::TargetMachine>(llvmTarget->createTargetMachine(
           targetTriple, cpu, target_features, targetOptions,
