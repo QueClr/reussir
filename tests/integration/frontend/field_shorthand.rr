@@ -16,7 +16,7 @@ fn make_point(x: i32, y: i32) -> Point {
     Point { x, y }
 }
 
-// CHECK-DAG: fn _RC10make_point(x: i32, y: i32) -> Point {
+// CHECK-DAG: fn _RC10make_point(x: i32, y: i32) -> Rc<{{.*}}Point{{.*}}> {
 // CHECK-DAG: compound
 
 // Test: mixed shorthand and explicit
@@ -24,7 +24,7 @@ fn make_point_mixed(x: i32) -> Point {
     Point { x, y: 10 }
 }
 
-// CHECK-DAG: fn _RC16make_point_mixed(x: i32) -> Point {
+// CHECK-DAG: fn _RC16make_point_mixed(x: i32) -> Rc<{{.*}}Point{{.*}}> {
 // CHECK-DAG: compound
 
 // Test: order independence with shorthand
@@ -32,7 +32,7 @@ fn make_point_reversed(x: i32, y: i32) -> Point {
     Point { y, x }
 }
 
-// CHECK-DAG: fn _RC19make_point_reversed(x: i32, y: i32) -> Point {
+// CHECK-DAG: fn _RC19make_point_reversed(x: i32, y: i32) -> Rc<{{.*}}Point{{.*}}> {
 // CHECK-DAG: compound
 
 // Test: shorthand only applies when variable is in scope
@@ -42,5 +42,5 @@ fn make_point_explicit() -> Point {
     Point { x, y }
 }
 
-// CHECK-DAG: fn _RC19make_point_explicit() -> Point {
+// CHECK-DAG: fn _RC19make_point_explicit() -> Rc<{{.*}}Point{{.*}}> {
 // CHECK-DAG: compound
