@@ -19,7 +19,7 @@ data Pattern' = Pattern' { patKind :: PatternKind, patGuard :: Maybe Expr }
 data PatternKind
     = WildcardPat 
     | BindPat Identifier
-    | CtorPatWithNamedArgs 
+    | CtorPat 
         { patCtorPath :: Path
         , patCtorArgs :: V.Vector PatternCtorArg
         , patCtorHasEllipsis :: Bool 
