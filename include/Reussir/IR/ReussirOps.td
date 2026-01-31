@@ -1392,4 +1392,17 @@ def ReussirStrUnsafeStartWithOp : ReussirStrOp<"unsafe_startswith", []> {
     `:` type($startsWith) attr-dict
    }];
 }
+
+def ReussirStrSliceOp : ReussirStrOp<"slice", []> {
+  let summary = "Slice the string from a byte offset";
+  let description = [{
+    `reussir.str.slice` returns a substring starting from the given offset.
+    If offset is greater than length, returns an empty string.
+  }];
+  let arguments = (ins Arg<ReussirStrType, "String to slice">:$str, Arg<Index, "Byte offset">:$offset);
+  let results = (outs Res<ReussirStrType, "Sliced string">:$result);
+  let assemblyFormat = [{
+    `(` $str `:` type($str) `)` `[` $offset `]` `:` type($result) attr-dict
+  }];
+}
 #endif // REUSSIR_IR_REUSSIROPS_TD
