@@ -1321,6 +1321,22 @@ def ReussirStrByteAtOp : ReussirStrOp<"byte_at", []> {
   }];
 }
 
+def ReussirStrUnsafeByteAtOp : ReussirStrOp<"unsafe_byte_at", []> {
+  let summary = "Get the character at a specific index without bounds check";
+  let description = [{
+    `reussir.str.unsafe_byte_at` returns the character at a byte offset. 
+    Undefined behavior if the index is out of bounds.
+  }];
+  let arguments = (ins Arg<ReussirStrType, "String to get character from">:$str, 
+    Arg<Index, "Index of character to get">:$index);
+  let results = (outs Res<I8, "Character at index">:$charVal);
+  let assemblyFormat = [{
+    `(` $str `:` type($str) `)` 
+    `[` $index `:` type($index) `]` 
+    `:` type($charVal) attr-dict
+  }];
+}
+
 def ReussirStrCastOp : ReussirStrOp<"cast", []> {
    let summary = "Cast a global string literal to a local string literal";
    let description = [{
@@ -1341,9 +1357,39 @@ def ReussirStrSelectOp : ReussirStrOp<"select", []> {
   }];
   let arguments = (ins Arg<ReussirStrType, "String to select">:$str, 
     Arg<ArrayAttr, "Patterns to match">:$patterns);
-  let results = (outs Res<Index, "Selected pattern">:$selected);
+  let results = (outs Res<Index, "Selected pattern">:$selected, 
+    Res<I1, "Matched found">:$found);
   let assemblyFormat = [{
-    `(` $str `:` type($str) `)` $patterns `:` type($selected) attr-dict
+    `(` $str `)` $patterns `:` functional-type(operands, results) attr-dict
   }];
+}
+
+def ReussirStrStartWithOp : ReussirStrOp<"startswith", []> {
+   let summary = "Check if the string starts with a prefix";
+   let description = [{
+    `reussir.str.startswith` checks if the string starts with a prefix.
+   }];
+   let arguments = (ins Arg<ReussirStrType, "String to check">:$str, Arg<StrAttr, "Prefix to check">:$prefix);
+   let results = (outs Res<I1, "Whether the string starts with the prefix">:$startsWith);
+   let assemblyFormat = [{
+    `(` $str `:` type($str) `)` 
+    $prefix 
+    `:` type($startsWith) attr-dict
+   }];
+}
+
+def ReussirStrUnsafeStartWithOp : ReussirStrOp<"unsafe_startswith", []> {
+   let summary = "Check if the string starts with a prefix without bounds check";
+   let description = [{
+    `reussir.str.unsafe_startswith` checks if the string starts with a prefix.
+    Undefined behavior if the prefix is longer than the string.
+   }];
+   let arguments = (ins Arg<ReussirStrType, "String to check">:$str, Arg<StrAttr, "Prefix to check">:$prefix);
+   let results = (outs Res<I1, "Whether the string starts with the prefix">:$startsWith);
+   let assemblyFormat = [{
+    `(` $str `:` type($str) `)` 
+    $prefix 
+    `:` type($startsWith) attr-dict
+   }];
 }
 #endif // REUSSIR_IR_REUSSIROPS_TD

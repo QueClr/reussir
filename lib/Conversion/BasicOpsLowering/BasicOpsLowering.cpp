@@ -1609,6 +1609,46 @@ struct ReussirStrLiteralOpConversionPattern
   }
 };
 
+struct ReussirStrLenOpConversionPattern
+    : public mlir::OpConversionPattern<ReussirStrLenOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(ReussirStrLenOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    // Extract the length field (index 1) from the string struct
+    rewriter.replaceOpWithNewOp<mlir::LLVM::ExtractValueOp>(
+        op, adaptor.getStr(), llvm::ArrayRef<int64_t>{1});
+    return mlir::success();
+  }
+};
+
+struct ReussirStrUnsafeByteAtOpConversionPattern
+    : public mlir::OpConversionPattern<ReussirStrUnsafeByteAtOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(ReussirStrUnsafeByteAtOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    mlir::Location loc = op.getLoc();
+    auto i8Type = rewriter.getI8Type();
+
+    // Extract the pointer field (index 0) from the string struct
+    auto ptr = rewriter.create<mlir::LLVM::ExtractValueOp>(
+        loc, adaptor.getStr(), llvm::ArrayRef<int64_t>{0});
+
+    // Calculate the address of the character
+    auto ptrType = mlir::LLVM::LLVMPointerType::get(rewriter.getContext());
+    auto charPtr = rewriter.create<mlir::LLVM::GEPOp>(
+        loc, ptrType, i8Type, ptr, mlir::ValueRange{adaptor.getIndex()});
+
+    // Load the character
+    rewriter.replaceOpWithNewOp<mlir::LLVM::LoadOp>(op, i8Type, charPtr);
+
+    return mlir::success();
+  }
+};
+
 struct ReussirRefDiffConversionPattern
     : public mlir::OpConversionPattern<ReussirRefDiffOp> {
   using OpConversionPattern::OpConversionPattern;
@@ -2021,9 +2061,10 @@ struct BasicOpsLoweringPass
           ReussirRegionCreateOp, ReussirRcReinterpretOp, ReussirClosureApplyOp,
           ReussirClosureCloneOp, ReussirClosureEvalOp,
           ReussirClosureInspectPayloadOp, ReussirClosureCursorOp,
-          ReussirClosureTransferOp, ReussirClosureInstantiateOp,
-          ReussirClosureVtableOp, ReussirClosureCreateOp, ReussirRcFetchDecOp,
-          ReussirStrGlobalOp, ReussirStrLiteralOp, ReussirPanicOp>();
+          ReussirClosureInstantiateOp, ReussirClosureVtableOp,
+          ReussirClosureCreateOp, ReussirRcFetchDecOp, ReussirStrGlobalOp,
+          ReussirStrLiteralOp, ReussirPanicOp, ReussirStrLenOp,
+          ReussirStrUnsafeByteAtOp>();
       target.addLegalDialect<mlir::LLVM::LLVMDialect>();
       if (failed(applyPartialConversion(getOperation(), target,
                                         std::move(patterns))))
@@ -2067,7 +2108,9 @@ void populateBasicOpsLoweringToLLVMConversionPatterns(
       ReussirClosureCreateOpConversionPattern,
       ReussirRcReinterpretConversionPattern,
       ReussirRcFetchDectConversionPattern, ReussirStrGlobalOpConversionPattern,
-      ReussirStrLiteralOpConversionPattern, ReussirPanicConversionPattern>(
-      converter, patterns.getContext());
+      ReussirStrLiteralOpConversionPattern, ReussirPanicConversionPattern,
+      ReussirStrLenOpConversionPattern,
+      ReussirStrUnsafeByteAtOpConversionPattern>(converter,
+                                                 patterns.getContext());
 }
 } // namespace reussir
