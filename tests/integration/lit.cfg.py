@@ -30,9 +30,14 @@ config.substitutions.append((r'%reussir-compiler', config.reussir_compiler_path)
 config.substitutions.append((r'%reussir-repl', config.reussir_repl_path))
 config.substitutions.append((r'%reussir-parser', config.reussir_parser_path))
 
-# TODO: should we support macos?
-if sys.platform == 'windows':
+# On Windows, add library path to PATH so DLLs can be found at runtime
+# (Windows doesn't have rpath like Linux/macOS)
+if sys.platform == 'win32':
     config.substitutions.append((r'%reussir_rt', 'reussir_rt.dll'))
+    # Add library path to PATH for DLL loading
+    path_sep = ';'
+    current_path = config.environment.get('PATH', os.environ.get('PATH', ''))
+    config.environment['PATH'] = config.library_path + path_sep + current_path
 elif sys.platform == 'darwin':
     config.substitutions.append((r'%reussir_rt', 'libreussir_rt.dylib'))
 else:
