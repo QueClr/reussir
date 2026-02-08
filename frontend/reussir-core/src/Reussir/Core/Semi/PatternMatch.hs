@@ -633,7 +633,6 @@ translateWithLeadingDistinguishable cps distinguishable@(PMMatrix matCursor matR
                     case RRB.viewl (rowPatterns row) of
                         Just (_, rest) -> Just row{rowPatterns = rest}
                         Nothing -> Just row -- Should unlikely happen for const group rows
-
             groupRows <-
                 RRB.fromList . catMaybes
                     <$> forM (toList (matrixRows group)) (\row -> return $ popLeading row)
@@ -644,25 +643,27 @@ translateWithLeadingDistinguishable cps distinguishable@(PMMatrix matCursor matR
 
             fallbackRowsExpanded <-
                 RRB.fromList . catMaybes
-                    <$> forM (toList fallback) (\row -> do
-                         if rowIsWildcardAtPrefix row matCursor
-                            then return $ Just row
-                            else case RRB.viewl (rowPatterns row) of
-                                Just ((_, pat), _) ->
-                                    -- Check if pattern matches the group's constant.
-                                    -- We assume all rows in `group` share the same constant value,
-                                    -- so checking against the first row's pattern is sufficient.
-                                    case RRB.viewl (matrixRows group) of
-                                        Just (firstRow, _) ->
-                                            case RRB.viewl (rowPatterns firstRow) of
-                                                Just ((_, groupKind), _) ->
-                                                    if pat == groupKind
-                                                        then return $ popLeading row
-                                                        else return Nothing
-                                                Nothing -> return Nothing
-                                        Nothing -> return Nothing
-                                Nothing -> return Nothing
-                    )
+                    <$> forM
+                        (toList fallback)
+                        ( \row -> do
+                            if rowIsWildcardAtPrefix row matCursor
+                                then return $ Just row
+                                else case RRB.viewl (rowPatterns row) of
+                                    Just ((_, pat), _) ->
+                                        -- Check if pattern matches the group's constant.
+                                        -- We assume all rows in `group` share the same constant value,
+                                        -- so checking against the first row's pattern is sufficient.
+                                        case RRB.viewl (matrixRows group) of
+                                            Just (firstRow, _) ->
+                                                case RRB.viewl (rowPatterns firstRow) of
+                                                    Just ((_, groupKind), _) ->
+                                                        if pat == groupKind
+                                                            then return $ popLeading row
+                                                            else return Nothing
+                                                    Nothing -> return Nothing
+                                            Nothing -> return Nothing
+                                    Nothing -> return Nothing
+                        )
 
             let newRows = groupRows <> wildcardRowsExpanded <> fallbackRowsExpanded
             let newGroup = PMMatrix matCursor newRows matTypeMap
@@ -677,7 +678,6 @@ translateWithLeadingDistinguishable cps distinguishable@(PMMatrix matCursor matR
             let parentType = HashMap.lookupDefault Semi.TypeBottom matCursor matTypeMap
             parentType' <- runUnification $ force parentType
             fieldTypes <- resolveFieldTypes parentType' ctorPath
-
 
             let mapRow row = do
                     let rowPatsView = RRB.viewl (rowPatterns row)
@@ -722,20 +722,19 @@ translateWithLeadingDistinguishable cps distinguishable@(PMMatrix matCursor matR
                                                                 (rowBindings row)
                                                                 newCols
 
-                                                    return $ Just row{rowPatterns = newRefPats <> restPats, rowBindings = newBindings}
+                                                    return $
+                                                        Just row{rowPatterns = newRefPats <> restPats, rowBindings = newBindings}
                                         else return Nothing -- Constructor mismatch, drop row from this branch
                                 Syn.WildcardPat -> do
                                     -- Wildcard matches everything, so we just pop it.
                                     return $ Just row{rowPatterns = restPats}
-
                                 _ -> return Nothing -- Should not happen for group rows, but can for fallback
                         Nothing -> return $ Just row -- Should not happen for group rows
-
             groupRows <-
                 RRB.fromList . catMaybes
                     <$> forM (toList (matrixRows group)) mapRow
 
-            -- | Expand wildcard rows for the current constructor.
+            -- \| Expand wildcard rows for the current constructor.
             -- Since these rows are wildcards at the current cursor, they match any constructor.
             -- We just need to ensure they are preserved in the new matrix, potentially implicitly
             -- handled if they don't have patterns for the new fields.
@@ -743,7 +742,7 @@ translateWithLeadingDistinguishable cps distinguishable@(PMMatrix matCursor matR
                 RRB.fromList . catMaybes
                     <$> forM (toList wildcards) (\row -> return $ Just row)
 
-            -- | Expand fallback rows.
+            -- \| Expand fallback rows.
             -- Fallback rows are patterns that appear *after* the current block of distinguishable patterns.
             -- They are included in the new matrix if:
             -- 1. They are wildcards at the current cursor (match this constructor).
@@ -751,11 +750,13 @@ translateWithLeadingDistinguishable cps distinguishable@(PMMatrix matCursor matR
             -- If they match a different constructor, they are excluded from this branch.
             fallbackRowsExpanded <-
                 RRB.fromList . catMaybes
-                    <$> forM (toList fallback) (\row -> do
-                         if rowIsWildcardAtPrefix row matCursor
-                            then return $ Just row
-                            else mapRow row
-                    )
+                    <$> forM
+                        (toList fallback)
+                        ( \row -> do
+                            if rowIsWildcardAtPrefix row matCursor
+                                then return $ Just row
+                                else mapRow row
+                        )
 
             let newRows = groupRows <> wildcardRowsExpanded <> fallbackRowsExpanded
 
@@ -763,14 +764,11 @@ translateWithLeadingDistinguishable cps distinguishable@(PMMatrix matCursor matR
             -- combine the new field types with existing types.
             -- Note: `wildcards` and `fallback` might depend on `matCursor` type which is already present.
             let combinedTypeMap = HashMap.union (HashMap.fromList (V.toList newTypeMap)) matTypeMap
-            
+
             let newGroup = PMMatrix matCursor newRows combinedTypeMap
             let finalGroup = normalizeVarRefLevel newGroup
 
             translatePMToDT cps finalGroup
-
-
-
 
         catMaybes :: [Maybe a] -> [a]
         catMaybes = mapMaybe id
@@ -778,10 +776,6 @@ translateWithLeadingDistinguishable cps distinguishable@(PMMatrix matCursor matR
             mapMaybe _ [] = []
             mapMaybe f (Nothing : xs) = mapMaybe f xs
             mapMaybe f (Just x : xs) = x : mapMaybe f xs
-
-
-
-
 
     groupsResults <- mapM processGroup groups
 
@@ -824,7 +818,7 @@ translateWithLeadingDistinguishable cps distinguishable@(PMMatrix matCursor matR
                      in (unIdentifier base == "Null" || unIdentifier base == "Nothing")
                             || ( not (null segs)
                                     && (unIdentifier (last segs) == "Null" || unIdentifier (last segs) == "Nothing")
-                                )
+                               )
                 -- Note: checking "Null" or "Nothing" is heuristic.
                 isNull _ = False
 
@@ -840,7 +834,8 @@ translateWithLeadingDistinguishable cps distinguishable@(PMMatrix matCursor matR
   where
     specializeDT :: PatternVarRef -> Int -> DecisionTree -> DecisionTree
     specializeDT targetRef index dt = case dt of
-        DTGuard v s t f -> DTGuard v s (specializeDT targetRef index t) (specializeDT targetRef index f)
+        DTGuard v s t f ->
+            DTGuard v s (specializeDT targetRef index t) (specializeDT targetRef index f)
         DTSwitch sVar cases | sVar == targetRef ->
             case cases of
                 DTSwitchCtor vec ->
@@ -852,7 +847,12 @@ translateWithLeadingDistinguishable cps distinguishable@(PMMatrix matCursor matR
 
     specializeDTNullable :: PatternVarRef -> Bool -> DecisionTree -> DecisionTree
     specializeDTNullable targetRef isNull dt = case dt of
-        DTGuard v s t f -> DTGuard v s (specializeDTNullable targetRef isNull t) (specializeDTNullable targetRef isNull f)
+        DTGuard v s t f ->
+            DTGuard
+                v
+                s
+                (specializeDTNullable targetRef isNull t)
+                (specializeDTNullable targetRef isNull f)
         DTSwitch sVar cases | sVar == targetRef ->
             case cases of
                 DTSwitchNullable j n -> if isNull then n else j

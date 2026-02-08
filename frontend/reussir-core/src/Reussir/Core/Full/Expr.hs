@@ -12,6 +12,7 @@ import Reussir.Codegen.Type.Data (Capability (..))
 import Reussir.Parser.Types.Lexer (WithSpan (..))
 import Prelude hiding (span)
 
+import Data.IntMap.Strict qualified as IntMap
 import Data.Vector.Strict qualified as V
 import Effectful.State.Static.Local qualified as State
 
@@ -21,14 +22,19 @@ import Reussir.Core.Data.Full.Context (
     LocalFullContext (..),
  )
 import Reussir.Core.Data.Full.Error (Error (..), ErrorKind (..))
-import Reussir.Core.Data.Full.Expr (DTSwitchCases (..), DecisionTree (..), Expr (..), ExprKind (..), PatternVarRef (..))
+import Reussir.Core.Data.Full.Expr (
+    DTSwitchCases (..),
+    DecisionTree (..),
+    Expr (..),
+    ExprKind (..),
+    PatternVarRef (..),
+ )
 import Reussir.Core.Data.Full.Type (Type (..))
 import Reussir.Core.Data.UniqueID (ExprID (ExprID))
 import Reussir.Core.Full.Context (addError, withSpan)
 import Reussir.Core.Full.Type (convertSemiType)
 import Reussir.Core.Semi.Mangle (mangleABIName)
 
-import Data.IntMap.Strict qualified as IntMap
 import Reussir.Core.Data.Semi.Expr qualified as SemiExpr
 import Reussir.Core.Data.Semi.Record qualified as Semi
 import Reussir.Core.Data.Semi.Type qualified as SemiType
@@ -194,7 +200,8 @@ convertDecisionTree (SemiExpr.DTGuard bindings guardExpr trueBr falseBr) = do
     guard' <- convertSemiExpr guardExpr
     trueBr' <- convertDecisionTree trueBr
     falseBr' <- convertDecisionTree falseBr
-    pure $ DTGuard (IntMap.map convertPatternVarRef bindings) guard' trueBr' falseBr'
+    pure $
+        DTGuard (IntMap.map convertPatternVarRef bindings) guard' trueBr' falseBr'
 convertDecisionTree (SemiExpr.DTSwitch varRef cases) = do
     cases' <- convertDTSwitchCases cases
     pure $ DTSwitch (convertPatternVarRef varRef) cases'

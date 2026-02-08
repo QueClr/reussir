@@ -455,15 +455,17 @@ inferType (Syn.Var varName) = do
                 Just record -> do
                     fieldsMaybe <- readIORef' (recordFields record)
                     case (recordKind record, fieldsMaybe) of
-                        (EnumVariant _ _, Just (Unnamed fs)) | V.null fs ->
-                            inferTypeForNormalCtorCall
-                                Syn.CtorCall
-                                    { Syn.ctorName = varName
-                                    , Syn.ctorTyArgs = []
-                                    , Syn.ctorArgs = []
-                                    }
+                        (EnumVariant _ _, Just (Unnamed fs))
+                            | V.null fs ->
+                                inferTypeForNormalCtorCall
+                                    Syn.CtorCall
+                                        { Syn.ctorName = varName
+                                        , Syn.ctorTyArgs = []
+                                        , Syn.ctorArgs = []
+                                        }
                         _ -> do
-                            addErrReportMsg $ "Qualified path is not a nullary variant: " <> T.pack (show varName)
+                            addErrReportMsg $
+                                "Qualified path is not a nullary variant: " <> T.pack (show varName)
                             exprWithSpan TypeBottom Poison
                 Nothing -> do
                     addErrReportMsg $ "Qualified variable not found: " <> T.pack (show varName)
@@ -573,7 +575,6 @@ inferType (Syn.Match scrutinee patterns) = do
     decisionTree <- translatePMToDT cps matrix
 
     checkExhaustiveness decisionTree
-
 
     let leafTypes = collectLeafExprTypes decisionTree
     matchType <- case leafTypes of
@@ -1205,7 +1206,7 @@ inferTypeForSequence (e : es) exprs = do
 
 checkExhaustiveness :: DecisionTree -> SemiEff ()
 checkExhaustiveness DTUncovered = do
-     addErrReportMsg "Non-exhaustive pattern match"
+    addErrReportMsg "Non-exhaustive pattern match"
 checkExhaustiveness DTUnreachable = return ()
 checkExhaustiveness (DTLeaf _ _) = return ()
 checkExhaustiveness (DTGuard _ _ trueBr falseBr) = do

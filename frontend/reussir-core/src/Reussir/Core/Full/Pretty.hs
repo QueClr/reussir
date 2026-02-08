@@ -26,7 +26,13 @@ import Reussir.Codegen.Type.Data qualified as C
 import Reussir.Parser.Types.Capability qualified as Cap
 
 import Reussir.Core.Data.FP (FloatingPointType (..))
-import Reussir.Core.Data.Full.Expr (DTSwitchCases (..), DecisionTree (..), Expr (..), ExprKind (..), PatternVarRef (..))
+import Reussir.Core.Data.Full.Expr (
+    DTSwitchCases (..),
+    DecisionTree (..),
+    Expr (..),
+    ExprKind (..),
+    PatternVarRef (..),
+ )
 import Reussir.Core.Data.Full.Function (Function (..))
 import Reussir.Core.Data.Full.Record (
     FieldFlag,
