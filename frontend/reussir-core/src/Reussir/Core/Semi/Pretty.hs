@@ -293,14 +293,10 @@ instance PrettyColored DecisionTree where
         guardDoc <- prettyColored guard
         trueDoc <- prettyColored trueBr
         falseDoc <- prettyColored falseBr
-        let caseDoc cond body =
-                keyword "if"
-                    <+> cond
-                    <+> braces (nest 4 (hardline <> body) <> hardline)
         pure $
             vsep
-                [ caseDoc guardDoc trueDoc
-                , caseDoc (keyword "otherwise") falseDoc
+                [ keyword "if" <+> guardDoc <+> braces (nest 4 (hardline <> trueDoc) <> hardline)
+                , keyword "otherwise" <+> braces (nest 4 (hardline <> falseDoc) <> hardline)
                 ]
     prettyColored (DTSwitch (PatternVarRef p) cases) = do
         casesDoc <- prettyColored cases

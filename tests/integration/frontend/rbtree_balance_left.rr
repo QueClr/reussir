@@ -1,0 +1,141 @@
+// RUN: %reussir-elab --mode semi %s | %FileCheck %s
+enum [value] Color {
+    Red,
+    Black
+}
+
+enum Tree<T : Num> {
+    Branch(Color, Tree<T>, T, Tree<T>),
+    Leaf
+}
+
+fn balance_left<T : Num>(l : Tree<T>, k : T, r : Tree<T>) -> Tree<T> {
+    match l {
+        Tree::Branch(_, Tree::Branch(Color::Red {}, lx, kx, rx), ky, ry) =>
+            Tree::Branch{
+                Color::Red {},
+                Tree::Branch{Color::Black {}, lx, kx, rx},
+                ky,
+                Tree::Branch{Color::Black {}, ry, k, r}
+            },
+
+        Tree::Branch(_, ly, ky, Tree::Branch(Color::Red {}, lx, kx, rx)) =>
+            Tree::Branch{
+                Color::Red {},
+                Tree::Branch{Color::Black {}, ly, ky, lx},
+                kx,
+                Tree::Branch{Color::Black {}, rx, k, r}
+            },
+
+        Tree::Branch(_, lx, kx, rx) =>
+            Tree::Branch{
+                Color::Black {},
+                Tree::Branch{Color::Red {}, lx, kx, rx},
+                k,
+                r
+            },
+
+        Tree::Leaf => Tree::Leaf {}
+    }
+}
+
+
+
+// CHECK:      ;; Instantiated Generics
+// CHECK-NEXT: Generic @1 should be instantiated to:
+// CHECK-NEXT: Generic @0 should be instantiated to:
+// CHECK:      ;; Elaborated Records
+// CHECK-NEXT: enum [shared] Tree<T@0>{
+// CHECK-NEXT:     Branch,
+// CHECK-NEXT:     Leaf
+// CHECK-NEXT: }
+// CHECK:      enum_variant [value] Tree::Leaf<T@0>()
+// CHECK:      enum_variant [value] Color::Black()
+// CHECK:      enum_variant [value] Tree::Branch<T@0>(Color, Tree<T0>, T0, Tree<T0>)
+// CHECK:      enum [value] Color{
+// CHECK-NEXT:     Red,
+// CHECK-NEXT:     Black
+// CHECK-NEXT: }
+// CHECK:      enum_variant [value] Color::Red()
+// CHECK:      ;; Elaborated Functions
+// CHECK-NEXT: fn balance_left<T@1>(v0 (l): Tree<T1>, v1 (k): T1, v2 (r): Tree<T1>) -> Tree<T1> {
+// CHECK-NEXT:     match v0 {
+// CHECK-NEXT:         switch (0) {
+// CHECK-NEXT:             ctor@0 => {
+// CHECK-NEXT:                 switch (0, 1) {
+// CHECK-NEXT:                     ctor@0 => {
+// CHECK-NEXT:                         switch (0, 1, 0) {
+// CHECK-NEXT:                             ctor@0 => {
+// CHECK-NEXT:                                 pattern var v3 (0, 1, 3)
+// CHECK-NEXT:                                 pattern var v4 (0, 2)
+// CHECK-NEXT:                                 pattern var v5 (0, 1, 1)
+// CHECK-NEXT:                                 pattern var v6 (0, 3)
+// CHECK-NEXT:                                 pattern var v7 (0, 1, 2)
+// CHECK-NEXT:                                 Tree<T1>[0](Tree::Branch<T1>(Color[0](Color::Red() : Color::Red) : Color, Tree<T1>[0](Tree::Branch<T1>(Color[1](Color::Black() : Color::Black) : Color, v5, v7, v3) : Tree::Branch<T1>) : Tree<T1>, v4, Tree<T1>[0](Tree::Branch<T1>(Color[1](Color::Black() : Color::Black) : Color, v6, v1, v2) : Tree::Branch<T1>) : Tree<T1>) : Tree::Branch<T1>) : Tree<T1>
+// CHECK-NEXT:                             }
+// CHECK-NEXT:                             ctor@1 => {
+// CHECK-NEXT:                                 switch (0, 3) {
+// CHECK-NEXT:                                     ctor@0 => {
+// CHECK-NEXT:                                         switch (0, 3, 0) {
+// CHECK-NEXT:                                             ctor@0 => {
+// CHECK-NEXT:                                                 pattern var v3 (0, 3, 3)
+// CHECK-NEXT:                                                 pattern var v4 (0, 2)
+// CHECK-NEXT:                                                 pattern var v5 (0, 3, 1)
+// CHECK-NEXT:                                                 pattern var v6 (0, 1)
+// CHECK-NEXT:                                                 pattern var v7 (0, 3, 2)
+// CHECK-NEXT:                                                 Tree<T1>[0](Tree::Branch<T1>(Color[0](Color::Red() : Color::Red) : Color, Tree<T1>[0](Tree::Branch<T1>(Color[1](Color::Black() : Color::Black) : Color, v6, v4, v5) : Tree::Branch<T1>) : Tree<T1>, v7, Tree<T1>[0](Tree::Branch<T1>(Color[1](Color::Black() : Color::Black) : Color, v3, v1, v2) : Tree::Branch<T1>) : Tree<T1>) : Tree::Branch<T1>) : Tree<T1>
+// CHECK-NEXT:                                             }
+// CHECK-NEXT:                                             ctor@1 => {
+// CHECK-NEXT:                                                 pattern var v3 (0, 3)
+// CHECK-NEXT:                                                 pattern var v4 (0, 1)
+// CHECK-NEXT:                                                 pattern var v5 (0, 2)
+// CHECK-NEXT:                                                 Tree<T1>[0](Tree::Branch<T1>(Color[1](Color::Black() : Color::Black) : Color, Tree<T1>[0](Tree::Branch<T1>(Color[0](Color::Red() : Color::Red) : Color, v4, v5, v3) : Tree::Branch<T1>) : Tree<T1>, v1, v2) : Tree::Branch<T1>) : Tree<T1>
+// CHECK-NEXT:                                             }
+// CHECK-NEXT:                                         }
+// CHECK-NEXT:                                     }
+// CHECK-NEXT:                                     ctor@1 => {
+// CHECK-NEXT:                                         pattern var v3 (0, 3)
+// CHECK-NEXT:                                         pattern var v4 (0, 1)
+// CHECK-NEXT:                                         pattern var v5 (0, 2)
+// CHECK-NEXT:                                         Tree<T1>[0](Tree::Branch<T1>(Color[1](Color::Black() : Color::Black) : Color, Tree<T1>[0](Tree::Branch<T1>(Color[0](Color::Red() : Color::Red) : Color, v4, v5, v3) : Tree::Branch<T1>) : Tree<T1>, v1, v2) : Tree::Branch<T1>) : Tree<T1>
+// CHECK-NEXT:                                     }
+// CHECK-NEXT:                                 }
+// CHECK-NEXT:                             }
+// CHECK-NEXT:                         }
+// CHECK-NEXT:                     }
+// CHECK-NEXT:                     ctor@1 => {
+// CHECK-NEXT:                         switch (0, 3) {
+// CHECK-NEXT:                             ctor@0 => {
+// CHECK-NEXT:                                 switch (0, 3, 0) {
+// CHECK-NEXT:                                     ctor@0 => {
+// CHECK-NEXT:                                         pattern var v3 (0, 3, 3)
+// CHECK-NEXT:                                         pattern var v4 (0, 2)
+// CHECK-NEXT:                                         pattern var v5 (0, 3, 1)
+// CHECK-NEXT:                                         pattern var v6 (0, 1)
+// CHECK-NEXT:                                         pattern var v7 (0, 3, 2)
+// CHECK-NEXT:                                         Tree<T1>[0](Tree::Branch<T1>(Color[0](Color::Red() : Color::Red) : Color, Tree<T1>[0](Tree::Branch<T1>(Color[1](Color::Black() : Color::Black) : Color, v6, v4, v5) : Tree::Branch<T1>) : Tree<T1>, v7, Tree<T1>[0](Tree::Branch<T1>(Color[1](Color::Black() : Color::Black) : Color, v3, v1, v2) : Tree::Branch<T1>) : Tree<T1>) : Tree::Branch<T1>) : Tree<T1>
+// CHECK-NEXT:                                     }
+// CHECK-NEXT:                                     ctor@1 => {
+// CHECK-NEXT:                                         pattern var v3 (0, 3)
+// CHECK-NEXT:                                         pattern var v4 (0, 1)
+// CHECK-NEXT:                                         pattern var v5 (0, 2)
+// CHECK-NEXT:                                         Tree<T1>[0](Tree::Branch<T1>(Color[1](Color::Black() : Color::Black) : Color, Tree<T1>[0](Tree::Branch<T1>(Color[0](Color::Red() : Color::Red) : Color, v4, v5, v3) : Tree::Branch<T1>) : Tree<T1>, v1, v2) : Tree::Branch<T1>) : Tree<T1>
+// CHECK-NEXT:                                     }
+// CHECK-NEXT:                                 }
+// CHECK-NEXT:                             }
+// CHECK-NEXT:                             ctor@1 => {
+// CHECK-NEXT:                                 pattern var v3 (0, 3)
+// CHECK-NEXT:                                 pattern var v4 (0, 1)
+// CHECK-NEXT:                                 pattern var v5 (0, 2)
+// CHECK-NEXT:                                 Tree<T1>[0](Tree::Branch<T1>(Color[1](Color::Black() : Color::Black) : Color, Tree<T1>[0](Tree::Branch<T1>(Color[0](Color::Red() : Color::Red) : Color, v4, v5, v3) : Tree::Branch<T1>) : Tree<T1>, v1, v2) : Tree::Branch<T1>) : Tree<T1>
+// CHECK-NEXT:                             }
+// CHECK-NEXT:                         }
+// CHECK-NEXT:                     }
+// CHECK-NEXT:                 }
+// CHECK-NEXT:             }
+// CHECK-NEXT:             ctor@1 => {
+// CHECK-NEXT:                 Tree<T1>[1](Tree::Leaf<T1>() : Tree::Leaf<T1>) : Tree<T1>
+// CHECK-NEXT:             }
+// CHECK-NEXT:         }
+// CHECK-NEXT:     }
+// CHECK-NEXT: }

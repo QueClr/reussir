@@ -1,0 +1,18 @@
+// RUN: %not %reussir-elab --mode semi %s 2>&1 | %FileCheck %s
+enum Foo {
+    Bar(Foo),
+    Baz,
+    Qux(Foo, Foo)
+}
+
+fn foo(x : Foo, flag: bool) -> Foo {
+    match x {
+        Foo::Qux(y, Foo::Qux(_, _)) => y,
+        _ if flag => x,
+        Foo::Qux(Foo::Qux(_, _), z) => z,
+        Foo::Bar(y) => foo(y, flag),
+        Foo::Baz => Foo::Baz{}
+    }
+}
+
+// CHECK: Non-exhaustive pattern match

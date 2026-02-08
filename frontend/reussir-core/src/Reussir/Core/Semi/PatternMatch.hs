@@ -389,7 +389,12 @@ translatePMToDT :: TyckCPS -> PMMatrix -> SemiEff DecisionTree
 translatePMToDT cps mat@PMMatrix{matrixCursor, matrixRows, matrixTypes} =
     if null matrixRows
         then
-            return DTUnreachable
+            -- If we have no rows left to match, it means for the current set of values,
+            -- no pattern matches. This is an uncovered case.
+            -- We return DTUncovered so that:
+            -- 1. If this is a partial match (e.g. wildcards exist), substituteUncovered can replace it with fallback.
+            -- 2. If this is final, checkExhaustiveness can report it as a warning.
+            return DTUncovered
         else do
             let SplitResult splitLeading splitWildcards splitTrailing = splitAtFirstWildcard mat
             if null splitLeading
@@ -475,7 +480,7 @@ translateWithLeadingWildcards ::
 translateWithLeadingWildcards cps cursor typeMap wildcards fallback = do
     -- We assume 'wildcards' is non-empty given the context of calling this function.
     case RRB.viewl wildcards of
-        Nothing | null fallback -> return DTUnreachable
+        Nothing | null fallback -> return DTUncovered
         Nothing -> do
             let normalizedFallback = normalizeVarRefLevel $ PMMatrix cursor fallback typeMap
             translatePMToDT cps normalizedFallback
@@ -680,42 +685,45 @@ translateWithLeadingDistinguishable cps distinguishable@(PMMatrix matCursor matR
                         Just ((_, pat), restPats) ->
                             case pat of
                                 Syn.CtorPat p args ell _ -> do
-                                    -- Convert args to strict vector
-                                    let argsStrict = V.fromList (toList args)
-                                    mNorm <- normalizeCtorPattern p argsStrict ell
-                                    case mNorm of
-                                        Nothing -> return $ Just row{rowPatterns = restPats}
-                                        Just subPats -> do
-                                            let newCols =
-                                                    V.imap
-                                                        ( \i subPat ->
-                                                            let ref = extendRef matCursor i
-                                                             in (ref, subPat)
-                                                        )
-                                                        subPats
+                                    if p == ctorPath
+                                        then do
+                                            -- Convert args to strict vector
+                                            let argsStrict = V.fromList (toList args)
+                                            mNorm <- normalizeCtorPattern p argsStrict ell
+                                            case mNorm of
+                                                Nothing -> return $ Just row{rowPatterns = restPats}
+                                                Just subPats -> do
+                                                    let newCols =
+                                                            V.imap
+                                                                ( \i subPat ->
+                                                                    let ref = extendRef matCursor i
+                                                                     in (ref, subPat)
+                                                                )
+                                                                subPats
 
-                                            let validCols =
-                                                    V.filter
-                                                        ( \(_, pat') -> case pat' of
-                                                            Syn.WildcardPat -> False
-                                                            Syn.BindPat _ -> False
-                                                            _ -> True
-                                                        )
-                                                        newCols
+                                                    let validCols =
+                                                            V.filter
+                                                                ( \(_, pat') -> case pat' of
+                                                                    Syn.WildcardPat -> False
+                                                                    Syn.BindPat _ -> False
+                                                                    _ -> True
+                                                                )
+                                                                newCols
 
-                                            let newRefPats = RRB.fromList (V.toList validCols)
+                                                    let newRefPats = RRB.fromList (V.toList validCols)
 
-                                            let newBindings =
-                                                    V.foldl'
-                                                        ( \acc (ref, subPat) ->
-                                                            case subPat of
-                                                                Syn.BindPat ident -> HashMap.insert ident ref acc
-                                                                _ -> acc
-                                                        )
-                                                        (rowBindings row)
-                                                        newCols
+                                                    let newBindings =
+                                                            V.foldl'
+                                                                ( \acc (ref, subPat) ->
+                                                                    case subPat of
+                                                                        Syn.BindPat ident -> HashMap.insert ident ref acc
+                                                                        _ -> acc
+                                                                )
+                                                                (rowBindings row)
+                                                                newCols
 
-                                            return $ Just row{rowPatterns = newRefPats <> restPats, rowBindings = newBindings}
+                                                    return $ Just row{rowPatterns = newRefPats <> restPats, rowBindings = newBindings}
+                                        else return Nothing -- Constructor mismatch, drop row from this branch
                                 Syn.WildcardPat -> do
                                     -- Wildcard matches everything, so we just pop it.
                                     return $ Just row{rowPatterns = restPats}
@@ -800,10 +808,12 @@ translateWithLeadingDistinguishable cps distinguishable@(PMMatrix matCursor matR
             let caseMap = HashMap.fromList [(ctorPathName kind, dt) | (kind, dt) <- groupsResults]
 
             let dtCases =
-                    V.map
-                        ( \variantName ->
+                    V.imap
+                        ( \i variantName ->
                             let fullPath = extendPath typePath variantName
-                             in HashMap.lookupDefault fallbackDT fullPath caseMap
+                             in case HashMap.lookup fullPath caseMap of
+                                    Just dt -> dt
+                                    Nothing -> specializeDT matCursor i fallbackDT
                         )
                         variants
 
@@ -814,20 +824,41 @@ translateWithLeadingDistinguishable cps distinguishable@(PMMatrix matCursor matR
                      in (unIdentifier base == "Null" || unIdentifier base == "Nothing")
                             || ( not (null segs)
                                     && (unIdentifier (last segs) == "Null" || unIdentifier (last segs) == "Nothing")
-                               )
+                                )
                 -- Note: checking "Null" or "Nothing" is heuristic.
                 isNull _ = False
 
             let (nulls, nonNulls) = partition (\(k, _) -> isNull k) groupsResults
             let dtNull = case nulls of
-                    [] -> fallbackDT
+                    [] -> specializeDTNullable matCursor True fallbackDT
                     ((_, dt) : _) -> dt
             let dtNonNull = case nonNulls of
-                    [] -> fallbackDT
+                    [] -> specializeDTNullable matCursor False fallbackDT
                     ((_, dt) : _) -> dt
 
             return $ DTSwitch matCursor (DTSwitchNullable dtNonNull dtNull)
   where
+    specializeDT :: PatternVarRef -> Int -> DecisionTree -> DecisionTree
+    specializeDT targetRef index dt = case dt of
+        DTGuard v s t f -> DTGuard v s (specializeDT targetRef index t) (specializeDT targetRef index f)
+        DTSwitch sVar cases | sVar == targetRef ->
+            case cases of
+                DTSwitchCtor vec ->
+                    if index >= 0 && index < V.length vec
+                        then vec V.! index
+                        else DTUncovered -- Should not happen if indices match
+                _ -> dt -- Should not happen if types match
+        _ -> dt
+
+    specializeDTNullable :: PatternVarRef -> Bool -> DecisionTree -> DecisionTree
+    specializeDTNullable targetRef isNull dt = case dt of
+        DTGuard v s t f -> DTGuard v s (specializeDTNullable targetRef isNull t) (specializeDTNullable targetRef isNull f)
+        DTSwitch sVar cases | sVar == targetRef ->
+            case cases of
+                DTSwitchNullable j n -> if isNull then n else j
+                _ -> dt
+        _ -> dt
+
     extendRef (PatternVarRef s) i = PatternVarRef (s Seq.|> i)
 
     lookupBranch key results def =

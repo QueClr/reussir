@@ -554,6 +554,9 @@ inferType (Syn.Match scrutinee patterns) = do
     let cps = TyckCPS inferType checkType withVariable
     decisionTree <- translatePMToDT cps matrix
 
+    checkExhaustiveness decisionTree
+
+
     let leafTypes = collectLeafExprTypes decisionTree
     matchType <- case leafTypes of
         [] -> return TypeUnit
@@ -570,6 +573,7 @@ inferType (Syn.Match scrutinee patterns) = do
             runUnification $ force t
 
     exprWithSpan matchType $ Match scrutinee' decisionTree
+
 -- Advance the span in the context and continue on inner expression
 inferType (Syn.SpannedExpr (WithSpan expr start end)) =
     withSpan (start, end) $ inferType expr
@@ -1180,3 +1184,29 @@ inferTypeForSequence
 inferTypeForSequence (e : es) exprs = do
     e' <- inferType e
     inferTypeForSequence es $ e' : exprs
+
+checkExhaustiveness :: DecisionTree -> SemiEff ()
+checkExhaustiveness DTUncovered = do
+     addErrReportMsg "Non-exhaustive pattern match"
+checkExhaustiveness DTUnreachable = return ()
+checkExhaustiveness (DTLeaf _ _) = return ()
+checkExhaustiveness (DTGuard _ _ trueBr falseBr) = do
+    checkExhaustiveness trueBr
+    checkExhaustiveness falseBr
+checkExhaustiveness (DTSwitch _ cases) = checkExhaustivenessCases cases
+
+checkExhaustivenessCases :: DTSwitchCases -> SemiEff ()
+checkExhaustivenessCases (DTSwitchInt m def) = do
+    forM_ (IntMap.elems m) checkExhaustiveness
+    checkExhaustiveness def
+checkExhaustivenessCases (DTSwitchBool t f) = do
+    checkExhaustiveness t
+    checkExhaustiveness f
+checkExhaustivenessCases (DTSwitchCtor cases) = do
+    forM_ (V.toList cases) checkExhaustiveness
+checkExhaustivenessCases (DTSwitchString m def) = do
+    forM_ (HashMap.elems m) checkExhaustiveness
+    checkExhaustiveness def
+checkExhaustivenessCases (DTSwitchNullable j n) = do
+    checkExhaustiveness j
+    checkExhaustiveness n
