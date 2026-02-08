@@ -1,0 +1,46 @@
+// RUN: %reussir-elab --mode semi %s | %FileCheck %s
+
+enum Pair {
+    MkPair(bool, bool)
+}
+
+fn test(x : Pair) -> i32 {
+    match x {
+        Pair::MkPair(true, true) => 1,
+        Pair::MkPair(true, false) => 2,
+        Pair::MkPair(false, true) => 3,
+        Pair::MkPair(false, false) => 4
+    }
+}
+
+// CHECK:      ;; Elaborated Functions
+// CHECK-NEXT: fn test(v0 (x): Pair) -> i32 {
+// CHECK-NEXT:     match v0 {
+// CHECK-NEXT:         switch (0) {
+// CHECK-NEXT:             ctor@0 => {
+// CHECK-NEXT:                 switch (0, 0) {
+// CHECK-NEXT:                     true => {
+// CHECK-NEXT:                         switch (0, 1) {
+// CHECK-NEXT:                             true => {
+// CHECK-NEXT:                                 1.0 : i32
+// CHECK-NEXT:                             }
+// CHECK-NEXT:                             false => {
+// CHECK-NEXT:                                 2.0 : i32
+// CHECK-NEXT:                             }
+// CHECK-NEXT:                         }
+// CHECK-NEXT:                     }
+// CHECK-NEXT:                     false => {
+// CHECK-NEXT:                         switch (0, 1) {
+// CHECK-NEXT:                             true => {
+// CHECK-NEXT:                                 3.0 : i32
+// CHECK-NEXT:                             }
+// CHECK-NEXT:                             false => {
+// CHECK-NEXT:                                 4.0 : i32
+// CHECK-NEXT:                             }
+// CHECK-NEXT:                         }
+// CHECK-NEXT:                     }
+// CHECK-NEXT:                 }
+// CHECK-NEXT:             }
+// CHECK-NEXT:         }
+// CHECK-NEXT:     }
+// CHECK-NEXT: }

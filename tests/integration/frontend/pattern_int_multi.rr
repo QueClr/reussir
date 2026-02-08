@@ -1,0 +1,34 @@
+// RUN: %reussir-elab --mode semi %s | %FileCheck %s
+
+fn test(x : i32) -> i32 {
+    match x {
+        0 => 10,
+        1 => 20,
+        2 => 30,
+        3 => 40,
+        _ => 0
+    }
+}
+
+// CHECK:      ;; Elaborated Functions
+// CHECK-NEXT: fn test(v0 (x): i32) -> i32 {
+// CHECK-NEXT:     match v0 {
+// CHECK-NEXT:         switch (0) {
+// CHECK-NEXT:             0 => {
+// CHECK-NEXT:                 10.0 : i32
+// CHECK-NEXT:             }
+// CHECK-NEXT:             1 => {
+// CHECK-NEXT:                 20.0 : i32
+// CHECK-NEXT:             }
+// CHECK-NEXT:             2 => {
+// CHECK-NEXT:                 30.0 : i32
+// CHECK-NEXT:             }
+// CHECK-NEXT:             3 => {
+// CHECK-NEXT:                 40.0 : i32
+// CHECK-NEXT:             }
+// CHECK-NEXT:             _ => {
+// CHECK-NEXT:                 0.0 : i32
+// CHECK-NEXT:             }
+// CHECK-NEXT:         }
+// CHECK-NEXT:     }
+// CHECK-NEXT: }

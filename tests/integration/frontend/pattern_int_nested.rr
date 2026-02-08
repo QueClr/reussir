@@ -1,0 +1,45 @@
+// RUN: %reussir-elab --mode semi %s | %FileCheck %s
+
+enum Wrapper {
+    Val(i32),
+    None
+}
+
+fn test(x : Wrapper) -> i32 {
+    match x {
+        Wrapper::Val(0) => 100,
+        Wrapper::Val(1) => 200,
+        Wrapper::Val(n) => n,
+        Wrapper::None => 0
+    }
+}
+
+// CHECK:      ;; Elaborated Records
+// CHECK-NEXT: enum [shared] Wrapper{
+// CHECK-NEXT:     Val,
+// CHECK-NEXT:     None
+// CHECK-NEXT: }
+// CHECK:      ;; Elaborated Functions
+// CHECK-NEXT: fn test(v0 (x): Wrapper) -> i32 {
+// CHECK-NEXT:     match v0 {
+// CHECK-NEXT:         switch (0) {
+// CHECK-NEXT:             ctor@0 => {
+// CHECK-NEXT:                 switch (0, 0) {
+// CHECK-NEXT:                     0 => {
+// CHECK-NEXT:                         100.0 : i32
+// CHECK-NEXT:                     }
+// CHECK-NEXT:                     1 => {
+// CHECK-NEXT:                         200.0 : i32
+// CHECK-NEXT:                     }
+// CHECK-NEXT:                     _ => {
+// CHECK-NEXT:                         pattern var v1 (0, 0)
+// CHECK-NEXT:                         v1
+// CHECK-NEXT:                     }
+// CHECK-NEXT:                 }
+// CHECK-NEXT:             }
+// CHECK-NEXT:             ctor@1 => {
+// CHECK-NEXT:                 0.0 : i32
+// CHECK-NEXT:             }
+// CHECK-NEXT:         }
+// CHECK-NEXT:     }
+// CHECK-NEXT: }

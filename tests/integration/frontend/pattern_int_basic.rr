@@ -1,0 +1,26 @@
+// RUN: %reussir-elab --mode semi %s | %FileCheck %s
+
+fn classify(x : i32) -> i32 {
+    match x {
+        0 => 1,
+        1 => 2,
+        _ => 3
+    }
+}
+
+// CHECK:      ;; Elaborated Functions
+// CHECK-NEXT: fn classify(v0 (x): i32) -> i32 {
+// CHECK-NEXT:     match v0 {
+// CHECK-NEXT:         switch (0) {
+// CHECK-NEXT:             0 => {
+// CHECK-NEXT:                 1.0 : i32
+// CHECK-NEXT:             }
+// CHECK-NEXT:             1 => {
+// CHECK-NEXT:                 2.0 : i32
+// CHECK-NEXT:             }
+// CHECK-NEXT:             _ => {
+// CHECK-NEXT:                 3.0 : i32
+// CHECK-NEXT:             }
+// CHECK-NEXT:         }
+// CHECK-NEXT:     }
+// CHECK-NEXT: }

@@ -1,0 +1,22 @@
+// RUN: %reussir-elab --mode semi %s | %FileCheck %s
+
+fn negate(x : bool) -> bool {
+    match x {
+        true => false,
+        false => true
+    }
+}
+
+// CHECK:      ;; Elaborated Functions
+// CHECK-NEXT: fn negate(v0 (x): bool) -> bool {
+// CHECK-NEXT:     match v0 {
+// CHECK-NEXT:         switch (0) {
+// CHECK-NEXT:             true => {
+// CHECK-NEXT:                 0.0 : bool
+// CHECK-NEXT:             }
+// CHECK-NEXT:             false => {
+// CHECK-NEXT:                 1.0 : bool
+// CHECK-NEXT:             }
+// CHECK-NEXT:         }
+// CHECK-NEXT:     }
+// CHECK-NEXT: }
