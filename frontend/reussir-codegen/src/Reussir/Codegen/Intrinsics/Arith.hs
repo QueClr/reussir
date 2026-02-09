@@ -433,8 +433,8 @@ arithCodegen Fptoui [(inVal, inTy)] [(resVal, resTy)] = convertArithCodegen "fpt
 arithCodegen Sitofp [(inVal, inTy)] [(resVal, resTy)] = convertArithCodegen "sitofp" (inVal, inTy) (resVal, resTy)
 arithCodegen Uitofp [(inVal, inTy)] [(resVal, resTy)] = convertArithCodegen "uitofp" (inVal, inTy) (resVal, resTy)
 -- Index cast operations
-arithCodegen IndexCast [(inVal, inTy)] [(resVal, resTy)] = convertArithCodegen "indexcast" (inVal, inTy) (resVal, resTy)
-arithCodegen IndexCastui [(inVal, inTy)] [(resVal, resTy)] = convertArithCodegen "indexcastui" (inVal, inTy) (resVal, resTy)
+arithCodegen IndexCast [(inVal, inTy)] [(resVal, resTy)] = convertArithCodegen "index_cast" (inVal, inTy) (resVal, resTy)
+arithCodegen IndexCastui [(inVal, inTy)] [(resVal, resTy)] = convertArithCodegen "index_castui" (inVal, inTy) (resVal, resTy)
 -- ============================================================================
 -- Scaling Operations
 -- ============================================================================

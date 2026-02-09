@@ -37,7 +37,7 @@ data Block = Block
     }
     deriving (Show)
 
-data YieldKind = YieldClosure | YieldRegion | YieldScf
+data YieldKind = YieldClosure | YieldRegion | YieldScf | YieldReussirScf
     deriving (Show)
 
 newtype VariantDispData = VariantDispData [([Int64], Block)]

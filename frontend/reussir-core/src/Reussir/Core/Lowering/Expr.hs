@@ -48,6 +48,7 @@ import Reussir.Core.String (mangleStringToken)
 
 import Reussir.Core.Data.FP qualified as FP
 import Reussir.Core.Data.Full.Expr qualified as Full
+import Reussir.Core.Lowering.DecisionTree qualified as DT
 import Reussir.Core.Data.Full.Record qualified as Full
 import Reussir.Core.Data.Full.Type qualified as Full
 import Reussir.Core.Data.Integral qualified as Int
@@ -402,6 +403,8 @@ lowerExprInBlock (Full.Assign dst idx src) _ = do
             addIRInstr storeOp
             pure Nothing
         _ -> error $ "assign to non-flex rc types: " ++ show dstTy
+lowerExprInBlock (Full.Match scrutinee dt) ty =
+    DT.lowerMatch scrutinee dt ty
 lowerExprInBlock kind ty =
     error $
         "Detailed lowerExprInBlock implementation missing for "

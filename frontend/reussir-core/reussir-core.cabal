@@ -63,6 +63,7 @@ library
         Reussir.Core.Lowering.Context
         Reussir.Core.Lowering.Debug
         Reussir.Core.Lowering.Function
+        Reussir.Core.Lowering.DecisionTree
         Reussir.Core.Lowering.Expr
         Reussir.Core.Lowering.Type
         Reussir.Core.Lowering.Record

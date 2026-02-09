@@ -251,6 +251,7 @@ yieldCodegen kind result = emitBuilderLineM $ do
         YieldClosure -> "reussir.closure.yield"
         YieldRegion -> "reussir.region.yield"
         YieldScf -> "scf.yield"
+        YieldReussirScf -> "reussir.scf.yield"
 
 closureCreateCodegen :: Block -> TypedValue -> Codegen ()
 closureCreateCodegen body (resVal, resTy) = do
@@ -335,7 +336,7 @@ variantDispCodegen val (VariantDispData cases) result = do
     for_ result $ emit . fst >=> emitBuilder . (<> " = ")
     val' <- fmtTypedValue val
     emitBuilder $ "reussir.record.dispatch (" <> val' <> ")"
-    for_ result $ emit . fst >=> emitBuilder . (" -> " <>)
+    for_ result $ emit . snd >=> emitBuilder . (" -> " <>)
     emitBuilder " {\n"
     incIndentation $ forM_ cases $ uncurry variantDispCaseCodegen
     emitBuilder "}"
