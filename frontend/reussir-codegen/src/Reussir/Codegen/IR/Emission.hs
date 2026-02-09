@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-
 -- Emission instances for IR data types (Linkage, LLVMVisibility) live here
 -- alongside their codegen functions, following the same pattern as Type.Emission.
 {-# OPTIONS_GHC -Wno-orphans #-}
