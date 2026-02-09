@@ -251,6 +251,9 @@ helpText =
         , "  :dump context   Dump the current semi-elaboration context"
         , "  :dump compiled  List compiled functions"
         , ""
+        , "  :{              Begin multiline input"
+        , "  }:              End multiline input"
+        , ""
         , "Input is automatically parsed as either definitions or expressions."
         ]
 
@@ -266,6 +269,21 @@ loop jit state hd = do
     case minput of
         Nothing -> return ()
         Just "" -> loop jit state hd
+        Just ":{" -> do
+            multilineInput <- readMultiline hd []
+            case multilineInput of
+                Nothing -> return () -- EOF during multiline
+                Just input -> do
+                    result <- processInput jit state input
+                    case result of
+                        Left errMsg -> do
+                            queryInput hd $ outputStrLn errMsg
+                            loop jit state hd
+                        Right (output, state') -> do
+                            case output of
+                                Just msg -> queryInput hd $ outputStrLn msg
+                                Nothing -> return ()
+                            loop jit state' hd
         Just input
             | isCommand input -> do
                 mState <- processCommand jit state input hd
@@ -284,6 +302,16 @@ loop jit state hd = do
                             Nothing -> return ()
                         loop jit state' hd
 
+-- | Read multiline input until }:
+readMultiline :: InputState -> [String] -> IO (Maybe String)
+readMultiline hd acc = do
+    let prompt = "| "
+    minput <- queryInput hd (getInputLine prompt)
+    case minput of
+        Nothing -> return Nothing
+        Just "}:" -> return $ Just $ unlines (reverse acc)
+        Just line -> readMultiline hd (line : acc)
+
 --------------------------------------------------------------------------------
 -- File Input Loop
 --------------------------------------------------------------------------------
@@ -292,6 +320,19 @@ fileLoop :: ReussirJIT () -> ReplState -> [String] -> IO ()
 fileLoop _ _ [] = return ()
 fileLoop jit state (line : rest)
     | null line = fileLoop jit state rest
+    | line == ":{" = do
+        let (block, rest') = collectMultiline rest []
+        let input = unlines (reverse block)
+        result <- processInput jit state input
+        case result of
+            Left errMsg -> do
+                putStrLn errMsg
+                fileLoop jit state rest'
+            Right (output, state') -> do
+                case output of
+                    Just msg -> putStrLn msg
+                    Nothing -> return ()
+                fileLoop jit state' rest'
     | isCommand line = do
         -- We need a dummy InputState for processCommand, but it uses it for printing.
         -- Commands in file mode might output to stdout.
@@ -335,6 +376,13 @@ fileLoop jit state (line : rest)
                     Just msg -> putStrLn msg
                     Nothing -> return ()
                 fileLoop jit state' rest
+
+-- | Collect lines until }: for multiline blocks in file mode
+collectMultiline :: [String] -> [String] -> ([String], [String])
+collectMultiline [] acc = (acc, [])
+collectMultiline (l : ls) acc
+    | l == "}:" = (acc, ls)
+    | otherwise = collectMultiline ls (l : acc)
 
 --------------------------------------------------------------------------------
 -- Dump Helpers
