@@ -46,6 +46,6 @@ module @test attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense
 // CHECK-MLIR-DAG: llvm.func @__reussir_allocate
 // CHECK-MLIR-DAG: llvm.call @__reussir_allocate
 
-// CHECK-LLVM-DAG: declare ptr @__reussir_allocate
+// CHECK-LLVM-DAG: declare {{.*}} ptr @__reussir_allocate
 // CHECK-LLVM-DAG: call ptr @__reussir_allocate
 

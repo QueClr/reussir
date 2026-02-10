@@ -45,7 +45,7 @@ module @test attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense
 // CHECK-MLIR-DAG: llvm.call @__reussir_cleanup_region
 // CHECK-MLIR-DAG: llvm.call @__reussir_release_rigid_object
 
-// CHECK-LLVM-DAG: declare ptr @__reussir_allocate
+// CHECK-LLVM-DAG: declare {{.*}} ptr @__reussir_allocate
 // CHECK-LLVM-DAG: declare ptr @__reussir_freeze_flex_object
 // CHECK-LLVM-DAG: declare void @__reussir_cleanup_region
 // CHECK-LLVM-DAG: declare void @__reussir_release_rigid_object
