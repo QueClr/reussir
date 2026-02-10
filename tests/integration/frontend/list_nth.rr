@@ -1,0 +1,53 @@
+// RUN: %reussir-compiler %s -t mlir -o %t.mlir
+// RUN: %FileCheck %s --check-prefix=CHECK-MLIR < %t.mlir
+enum List<T> {
+    Nil,
+    Cons(T, List<T>)
+}
+
+enum Option<T> {
+    None,
+    Some(T)
+}
+
+// Get the nth element (0-indexed) from a list, consuming it.
+// Combines index arithmetic with ownership: each recursive step
+// decrements the index and deallocates the skipped cons cell.
+fn nth(list : List<i32>, n : i32) -> Option<i32> {
+    match list {
+        List::Nil => Option::None {},
+        List::Cons(x, xs) =>
+            if n == 0 {
+                // Found it: dec xs, return Some(x)
+                Option::Some{x}
+            } else {
+                nth(xs, n - 1)
+            }
+    }
+}
+
+// --- MLIR ownership checks ---
+// nth(%0=list, %1=n): consuming traversal with index
+// CHECK-MLIR-LABEL: func.func @"_RC3nth"(%0 :
+// CHECK-MLIR:       reussir.rc.borrow (%0 :
+// CHECK-MLIR:       reussir.record.dispatch
+// Nil: dec list, return None
+// CHECK-MLIR:       [0] ->
+// CHECK-MLIR:       reussir.rc.dec (%0 :
+// CHECK-MLIR:       reussir.record.compound
+// CHECK-MLIR:       reussir.record.variant
+// Cons(x, xs): extract fields, check index
+// CHECK-MLIR:       [1] ->
+// CHECK-MLIR:       reussir.ref.project
+// CHECK-MLIR:       reussir.ref.load
+// CHECK-MLIR:       reussir.rc.inc
+// CHECK-MLIR:       reussir.ref.project
+// CHECK-MLIR:       reussir.ref.load
+// CHECK-MLIR:       reussir.rc.dec (%0 :
+// n==0 branch: dec xs, return Some(x)
+// CHECK-MLIR:       reussir.rc.dec
+// CHECK-MLIR:       reussir.record.compound
+// CHECK-MLIR:       reussir.record.variant
+// CHECK-MLIR:       reussir.rc.create
+// n!=0 branch: recurse with xs and n-1
+// CHECK-MLIR:       func.call @"_RC3nth"

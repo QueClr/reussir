@@ -21,8 +21,8 @@ import Reussir.Codegen.Type qualified as IR
 
 import Reussir.Core.Data.Lowering.Context (
     GlobalLoweringEff,
-    LoweringContext (..),
     LocalLoweringContext (..),
+    LoweringContext (..),
  )
 import Reussir.Core.Lowering.Context (
     addIRInstr,
@@ -44,7 +44,8 @@ lowerFunction func = do
     -- Run ownership analysis before lowering
     recordTable <- Reader.asks recordInstances
     annotations <- liftIO $ analyzeFunction recordTable func
-    Reader.local (\ctx -> ctx{ownershipAnnotations = annotations}) $ lowerFunctionInner func
+    Reader.local (\ctx -> ctx{ownershipAnnotations = annotations}) $
+        lowerFunctionInner func
 
 lowerFunctionInner :: Full.Function -> GlobalLoweringEff ()
 lowerFunctionInner func = do

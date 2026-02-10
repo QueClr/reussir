@@ -1,0 +1,34 @@
+// RUN: %reussir-compiler %s -t mlir -o %t.mlir
+// RUN: %FileCheck %s --check-prefix=CHECK-MLIR < %t.mlir
+enum List<T> {
+    Nil,
+    Cons(T, List<T>)
+}
+
+// Count elements in a list, consuming it.
+// Pure structural traversal: element value (i32) is ignored entirely.
+// Backend should produce a tight tail-call loop with zero allocations.
+fn length(list : List<i32>) -> i32 {
+    match list {
+        List::Nil => 0,
+        List::Cons(_, xs) => 1 + length(xs)
+    }
+}
+
+// --- MLIR ownership checks ---
+// length(%0=list): consuming structural traversal
+// CHECK-MLIR-LABEL: func.func @"_RC6length"(%0 :
+// CHECK-MLIR:       reussir.rc.borrow (%0 :
+// CHECK-MLIR:       reussir.record.dispatch
+// Nil: dec list, yield 0
+// CHECK-MLIR:       [0] ->
+// CHECK-MLIR:       reussir.rc.dec (%0 :
+// CHECK-MLIR:       arith.constant 0 : i32
+// CHECK-MLIR:       reussir.scf.yield
+// Cons(_, xs): load xs (RC), inc xs, dec list, recurse
+// CHECK-MLIR:       [1] ->
+// CHECK-MLIR:       reussir.ref.project
+// CHECK-MLIR:       reussir.ref.load
+// CHECK-MLIR:       reussir.rc.inc
+// CHECK-MLIR:       reussir.rc.dec (%0 :
+// CHECK-MLIR:       func.call @"_RC6length"

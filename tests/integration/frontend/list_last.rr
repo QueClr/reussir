@@ -1,0 +1,49 @@
+// RUN: %reussir-compiler %s -t mlir -o %t.mlir
+// RUN: %FileCheck %s --check-prefix=CHECK-MLIR < %t.mlir
+enum List<T> {
+    Nil,
+    Cons(T, List<T>)
+}
+
+enum Option<T> {
+    None,
+    Some(T)
+}
+
+// Return the last element of a list (as Option), consuming the list.
+// Tests returning a newly created RC value from one branch and a
+// non-RC value from another, with proper reconciliation.
+fn last(list : List<i32>) -> Option<i32> {
+    match list {
+        List::Nil => Option::None {},
+        List::Cons(x, List::Nil) => Option::Some{x},
+        List::Cons(_, xs) => last(xs)
+    }
+}
+
+// --- MLIR ownership checks ---
+// last(%0=list): match with nested pattern (flattened DT)
+// CHECK-MLIR-LABEL: func.func @"_RC4last"(%0 :
+// CHECK-MLIR:       reussir.rc.borrow (%0 :
+// CHECK-MLIR:       reussir.record.dispatch
+// Nil: dec list, return None
+// CHECK-MLIR:       [0] ->
+// CHECK-MLIR:       reussir.rc.dec (%0 :
+// CHECK-MLIR:       reussir.record.compound
+// CHECK-MLIR:       reussir.record.variant
+// Cons: intermediate dispatch on tail (no inc for lookup)
+// CHECK-MLIR:       [1] ->
+// CHECK-MLIR:       reussir.ref.project
+// CHECK-MLIR:       reussir.ref.load
+// CHECK-MLIR-NOT:   reussir.rc.inc
+// CHECK-MLIR:       reussir.rc.borrow
+// CHECK-MLIR:       reussir.record.dispatch
+// Cons(x, Nil): load x (i32), dec list, return Some(x)
+// CHECK-MLIR:       [0] ->
+// CHECK-MLIR:       reussir.rc.dec (%0 :
+// Cons(_, xs): reload xs from shared ref, inc xs, dec list, recurse
+// CHECK-MLIR:       [1] ->
+// CHECK-MLIR:       reussir.ref.load
+// CHECK-MLIR:       reussir.rc.inc
+// CHECK-MLIR:       reussir.rc.dec (%0 :
+// CHECK-MLIR:       func.call @"_RC4last"

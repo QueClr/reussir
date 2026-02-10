@@ -2,10 +2,10 @@
 
 module Reussir.Core.Lowering.DecisionTree (lowerMatch) where
 
+import Data.Digest.XXHash.FFI (XXH3 (XXH3))
 import Data.Int (Int64)
 import Effectful (inject)
 
-import Data.Digest.XXHash.FFI (XXH3 (XXH3))
 import Data.HashMap.Strict qualified as HashMap
 import Data.IntMap.Strict qualified as IntMap
 import Data.Map.Strict qualified as Map
@@ -22,10 +22,6 @@ import Reussir.Codegen.Type qualified as IR
 import Reussir.Codegen.Type.Data qualified as IRType
 import Reussir.Codegen.Value qualified as IR
 
-import Reussir.Core.Data.Full.Expr qualified as Full
-import Reussir.Core.Data.Full.Record qualified as Full
-import Reussir.Core.Data.Full.Type qualified as Full
-import Reussir.Core.Data.Integral qualified as Int
 import Reussir.Core.Data.Lowering.Context (
     ExprResult,
     LocalLoweringContext (..),
@@ -40,18 +36,28 @@ import Reussir.Core.Lowering.Context (
     tyValOrICE,
     withVar,
  )
-import {-# SOURCE #-} Reussir.Core.Lowering.Expr (lowerExpr, loadIfRef)
+import {-# SOURCE #-} Reussir.Core.Lowering.Expr (loadIfRef, lowerExpr)
 import Reussir.Core.Lowering.Type (convertType, mkRefType)
+
+import Reussir.Core.Data.Full.Expr qualified as Full
+import Reussir.Core.Data.Full.Record qualified as Full
+import Reussir.Core.Data.Full.Type qualified as Full
+import Reussir.Core.Data.Integral qualified as Int
 import Reussir.Core.Uitls.HashTable qualified as H
 
--- | Context for decision tree lowering.
--- Maps PatternVarRef paths to (Current Value, Current Type, Optional Original Value).
+{- | Context for decision tree lowering.
+Maps PatternVarRef paths to (Current Value, Current Type, Optional Original Value).
+-}
 newtype DTContext = DTContext
-    { dtRefMap :: Map.Map (Seq.Seq Int) (IR.TypedValue, Full.Type, Maybe (IR.TypedValue, Full.Type))
+    { dtRefMap ::
+        Map.Map
+            (Seq.Seq Int)
+            (IR.TypedValue, Full.Type, Maybe (IR.TypedValue, Full.Type))
     }
 
 -- | Entry point: lower a match expression.
-lowerMatch :: Full.Expr -> Full.DecisionTree -> Full.Type -> LoweringEff ExprResult
+lowerMatch ::
+    Full.Expr -> Full.DecisionTree -> Full.Type -> LoweringEff ExprResult
 lowerMatch scrutinee dt resultTy = do
     scrutVal <- tyValOrICE <$> lowerExpr scrutinee
     let scrutFullTy = Full.exprType scrutinee
@@ -60,7 +66,8 @@ lowerMatch scrutinee dt resultTy = do
     lowerDecisionTree ctx dt resultTy
 
 -- | Recursively lower a decision tree node.
-lowerDecisionTree :: DTContext -> Full.DecisionTree -> Full.Type -> LoweringEff ExprResult
+lowerDecisionTree ::
+    DTContext -> Full.DecisionTree -> Full.Type -> LoweringEff ExprResult
 lowerDecisionTree _ Full.DTUncovered ty = do
     -- Panic for uncovered cases, then produce poison
     addIRInstr $ IR.Panic "match is not exhaustive"
@@ -96,7 +103,12 @@ lowerDecisionTree ctx (Full.DTSwitch varRef cases) ty = do
 
 -- | Lower a decision tree into a block with specified yield kind.
 lowerDTAsBlockWith ::
-    IR.YieldKind -> DTContext -> Full.DecisionTree -> Full.Type -> [IR.TypedValue] -> LoweringEff IR.Block
+    IR.YieldKind ->
+    DTContext ->
+    Full.DecisionTree ->
+    Full.Type ->
+    [IR.TypedValue] ->
+    LoweringEff IR.Block
 lowerDTAsBlockWith yieldKind ctx dt ty blkArgs = do
     backupBlock <- State.gets currentBlock
     State.modify $ \s -> s{currentBlock = Seq.empty}
@@ -108,19 +120,27 @@ lowerDTAsBlockWith yieldKind ctx dt ty blkArgs = do
 
 -- | Lower a decision tree into a block (for use inside scf.if, scf.index_switch)
 lowerDTAsBlock ::
-    DTContext -> Full.DecisionTree -> Full.Type -> [IR.TypedValue] -> LoweringEff IR.Block
+    DTContext ->
+    Full.DecisionTree ->
+    Full.Type ->
+    [IR.TypedValue] ->
+    LoweringEff IR.Block
 lowerDTAsBlock = lowerDTAsBlockWith IR.YieldScf
 
--- | Resolve a PatternVarRef to an IR value.
--- Find the longest matching prefix in the context, then emit RefProject
--- for any remaining suffix.
-resolvePatternVarRef :: DTContext -> Full.PatternVarRef -> LoweringEff IR.TypedValue
+{- | Resolve a PatternVarRef to an IR value.
+Find the longest matching prefix in the context, then emit RefProject
+for any remaining suffix.
+-}
+resolvePatternVarRef ::
+    DTContext -> Full.PatternVarRef -> LoweringEff IR.TypedValue
 resolvePatternVarRef ctx (Full.PatternVarRef path) = do
     let (baseVal, baseTy, remainingIndices) = findLongestPrefix (dtRefMap ctx) path
     foldProjections baseVal baseTy remainingIndices
   where
     findLongestPrefix ::
-        Map.Map (Seq.Seq Int) (IR.TypedValue, Full.Type, Maybe (IR.TypedValue, Full.Type)) ->
+        Map.Map
+            (Seq.Seq Int)
+            (IR.TypedValue, Full.Type, Maybe (IR.TypedValue, Full.Type)) ->
         Seq.Seq Int ->
         (IR.TypedValue, Full.Type, [Int])
     findLongestPrefix refMap fullPath =
@@ -148,13 +168,15 @@ resolvePatternVarRef ctx (Full.PatternVarRef path) = do
                         let idx = Seq.index fullPath (n - 1)
                          in go (n - 1) (idx : acc)
 
-    foldProjections :: IR.TypedValue -> Full.Type -> [Int] -> LoweringEff IR.TypedValue
+    foldProjections ::
+        IR.TypedValue -> Full.Type -> [Int] -> LoweringEff IR.TypedValue
     foldProjections val _ [] = pure val
     foldProjections val fty (idx : rest) = do
         (val', fieldTy) <- projectOneField val fty idx
         foldProjections val' fieldTy rest
 
-    projectOneField :: IR.TypedValue -> Full.Type -> Int -> LoweringEff (IR.TypedValue, Full.Type)
+    projectOneField ::
+        IR.TypedValue -> Full.Type -> Int -> LoweringEff (IR.TypedValue, Full.Type)
     projectOneField base@(_, irTy) fty idx = do
         case irTy of
             IR.TypeRef (IR.Ref (IR.TypeExpr sym) atm cap) -> do
@@ -223,9 +245,11 @@ ensureRef val@(_, irTy) _fty = do
             addIRInstr $ IR.RefSpill val (resVal, spillRef)
             pure (resVal, spillRef)
 
--- | Bind pattern variables, resolve their refs, load if needed, then run action.
--- For RC-typed values loaded from refs, emit rc.inc to take ownership.
-withPatternBindings :: DTContext -> IntMap.IntMap Full.PatternVarRef -> LoweringEff a -> LoweringEff a
+{- | Bind pattern variables, resolve their refs, load if needed, then run action.
+For RC-typed values loaded from refs, emit rc.inc to take ownership.
+-}
+withPatternBindings ::
+    DTContext -> IntMap.IntMap Full.PatternVarRef -> LoweringEff a -> LoweringEff a
 withPatternBindings ctx bindings action = do
     let bindingsList = IntMap.toAscList bindings
     go bindingsList
@@ -244,7 +268,11 @@ withPatternBindings ctx bindings action = do
 
 -- | Lower a DTSwitch node.
 lowerDTSwitch ::
-    DTContext -> Full.PatternVarRef -> Full.DTSwitchCases -> Full.Type -> LoweringEff ExprResult
+    DTContext ->
+    Full.PatternVarRef ->
+    Full.DTSwitchCases ->
+    Full.Type ->
+    LoweringEff ExprResult
 lowerDTSwitch ctx varRef (Full.DTSwitchBool trueDT falseDT) ty = do
     scrutRef <- resolvePatternVarRef ctx varRef
     scrutVal <- loadIfRef scrutRef
@@ -300,7 +328,10 @@ lowerCtorSwitch ctx varRef ctorCases ty = do
             _ -> error $ "lowerCtorSwitch: not an enum record " <> show recordSym
     returnTy <- inject $ convertType ty
     -- Build VariantDispData: one arm per variant
-    arms <- V.imapM (buildCtorArm path cap returnTy scrutRef scrutFullTy) (V.zip variantSyms ctorCases)
+    arms <-
+        V.imapM
+            (buildCtorArm path cap returnTy scrutRef scrutFullTy)
+            (V.zip variantSyms ctorCases)
     resultVal <- nextValue
     let dispInstr =
             IR.VariantDispatch
@@ -437,7 +468,8 @@ lowerIntSwitch ctx varRef intMap defaultDT ty = do
     addIRInstr switchInstr
     pure $ Just (resultVal, returnTy)
   where
-    buildIntCase :: IR.Type -> (IntMap.Key, Full.DecisionTree) -> LoweringEff (Int64, IR.Block)
+    buildIntCase ::
+        IR.Type -> (IntMap.Key, Full.DecisionTree) -> LoweringEff (Int64, IR.Block)
     buildIntCase _returnTy (key, dt) = do
         block <- lowerDTAsBlock ctx dt ty []
         pure (fromIntegral key, block)
@@ -482,12 +514,12 @@ lowerStringSwitch ctx varRef strMap defaultDT ty = do
     backupBlock <- State.gets currentBlock
     State.modify $ \s -> s{currentBlock = Seq.empty}
     switchResultVal <- nextValue
-    addIRInstr $
-        IR.IndexSwitch
+    addIRInstr
+        $ IR.IndexSwitch
             (idxVal, indexTy)
             caseBlocks
             unreachableBlock
-            $ Just (switchResultVal, returnTy)
+        $ Just (switchResultVal, returnTy)
     addIRInstr $ IR.Yield IR.YieldScf $ Just (switchResultVal, returnTy)
     thenBlock <- materializeCurrentBlock []
     -- Else block: default
@@ -518,7 +550,9 @@ lookupTypeAtPath ctx path = do
     resolveFieldType baseTy remaining
   where
     findPrefix ::
-        Map.Map (Seq.Seq Int) (IR.TypedValue, Full.Type, Maybe (IR.TypedValue, Full.Type)) ->
+        Map.Map
+            (Seq.Seq Int)
+            (IR.TypedValue, Full.Type, Maybe (IR.TypedValue, Full.Type)) ->
         Seq.Seq Int ->
         (IR.TypedValue, Full.Type, [Int])
     findPrefix refMap fullPath = go (Seq.length fullPath) []

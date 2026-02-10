@@ -11,8 +11,9 @@ module Reussir.Core.Data.Ownership (
 ) where
 
 import Data.IntMap.Strict (IntMap)
-import Data.IntMap.Strict qualified as IntMap
 import Data.IntSet (IntSet)
+
+import Data.IntMap.Strict qualified as IntMap
 
 import Reussir.Core.Data.UniqueID (ExprID (..), VarID (..))
 
@@ -71,7 +72,8 @@ emptyFlux =
 lookupAnnotation :: ExprID -> OwnershipAnnotations -> Maybe OwnershipAction
 lookupAnnotation (ExprID eid) (OwnershipAnnotations m) = IntMap.lookup eid m
 
-insertAnnotation :: ExprID -> OwnershipAction -> OwnershipAnnotations -> OwnershipAnnotations
+insertAnnotation ::
+    ExprID -> OwnershipAction -> OwnershipAnnotations -> OwnershipAnnotations
 insertAnnotation (ExprID eid) action (OwnershipAnnotations m) =
     OwnershipAnnotations $ IntMap.insert eid action m
 

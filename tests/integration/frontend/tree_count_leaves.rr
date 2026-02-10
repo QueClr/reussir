@@ -1,0 +1,38 @@
+// RUN: %reussir-compiler %s -t mlir -o %t.mlir
+// RUN: %FileCheck %s --check-prefix=CHECK-MLIR < %t.mlir
+enum Tree {
+    Leaf(i32),
+    Node(Tree, Tree)
+}
+
+// Count the number of leaves in a binary tree, consuming it.
+// Similar to tree_sum but fully structural (ignores leaf values).
+// Both children need inc when extracted from Node.
+fn count_leaves(t : Tree) -> i32 {
+    match t {
+        Tree::Leaf(_) => 1,
+        Tree::Node(l, r) => count_leaves(l) + count_leaves(r)
+    }
+}
+
+// --- MLIR ownership checks ---
+// CHECK-MLIR-LABEL: func.func @"_RC12count_leaves"(%0 :
+// CHECK-MLIR:       reussir.rc.borrow (%0 :
+// CHECK-MLIR:       reussir.record.dispatch
+// Leaf(_): ignore value, dec scrutinee, return 1
+// CHECK-MLIR:       [0] ->
+// CHECK-MLIR-NOT:   reussir.rc.inc
+// CHECK-MLIR:       reussir.rc.dec (%0 :
+// CHECK-MLIR:       arith.constant 1 : i32
+// CHECK-MLIR:       reussir.scf.yield
+// Node(l, r): inc both children, dec scrutinee, recurse on both
+// CHECK-MLIR:       [1] ->
+// CHECK-MLIR:       reussir.ref.project
+// CHECK-MLIR:       reussir.ref.load
+// CHECK-MLIR:       reussir.rc.inc
+// CHECK-MLIR:       reussir.ref.project
+// CHECK-MLIR:       reussir.ref.load
+// CHECK-MLIR:       reussir.rc.inc
+// CHECK-MLIR:       reussir.rc.dec (%0 :
+// CHECK-MLIR:       func.call @"_RC12count_leaves"
+// CHECK-MLIR:       func.call @"_RC12count_leaves"

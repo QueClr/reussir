@@ -29,10 +29,9 @@ import Reussir.Codegen.Value qualified as IR
 import Reussir.Core.Data.Lowering.Context (
     ExprResult,
     LocalLoweringContext (..),
-    LoweringContext (recordInstances, ownershipAnnotations),
+    LoweringContext (ownershipAnnotations, recordInstances),
     LoweringEff,
  )
-import Reussir.Core.Data.Ownership qualified as Own
 import Reussir.Core.Data.UniqueID (ExprID, VarID (..))
 import Reussir.Core.Lowering.Context (
     addIRInstr,
@@ -49,11 +48,12 @@ import Reussir.Core.String (mangleStringToken)
 
 import Reussir.Core.Data.FP qualified as FP
 import Reussir.Core.Data.Full.Expr qualified as Full
-import Reussir.Core.Lowering.DecisionTree qualified as DT
 import Reussir.Core.Data.Full.Record qualified as Full
 import Reussir.Core.Data.Full.Type qualified as Full
 import Reussir.Core.Data.Integral qualified as Int
 import Reussir.Core.Data.Operator qualified as Sem
+import Reussir.Core.Data.Ownership qualified as Own
+import Reussir.Core.Lowering.DecisionTree qualified as DT
 import Reussir.Core.Uitls.HashTable qualified as H
 
 createConstant :: IR.Type -> Scientific -> LoweringEff IR.TypedValue

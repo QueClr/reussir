@@ -1,0 +1,40 @@
+// RUN: %reussir-compiler %s -t mlir -o %t.mlir
+// RUN: %FileCheck %s --check-prefix=CHECK-MLIR < %t.mlir
+enum Tree {
+    Leaf(i32),
+    Node(Tree, Tree)
+}
+
+// Sum all leaf values in a binary tree.
+// Tests multi-RC pattern bindings: Node has two RC children that both
+// need inc when extracted from the borrowed scrutinee.
+fn tree_sum(t : Tree) -> i32 {
+    match t {
+        Tree::Leaf(x) => x,
+        Tree::Node(l, r) => tree_sum(l) + tree_sum(r)
+    }
+}
+
+// --- MLIR ownership checks ---
+// tree_sum(%0=t): match on tree
+// CHECK-MLIR-LABEL: func.func @"_RC8tree_sum"(%0 :
+// CHECK-MLIR:       reussir.rc.borrow (%0 :
+// CHECK-MLIR:       reussir.record.dispatch
+// Leaf(x): x is i32, no inc needed, dec scrutinee
+// CHECK-MLIR:       [0] ->
+// CHECK-MLIR:       reussir.ref.project
+// CHECK-MLIR:       reussir.ref.load
+// CHECK-MLIR-NOT:   reussir.rc.inc
+// CHECK-MLIR:       reussir.rc.dec (%0 :
+// CHECK-MLIR:       reussir.scf.yield
+// Node(l, r): both children are RC, both need inc, then dec scrutinee
+// CHECK-MLIR:       [1] ->
+// CHECK-MLIR:       reussir.ref.project
+// CHECK-MLIR:       reussir.ref.load
+// CHECK-MLIR:       reussir.rc.inc
+// CHECK-MLIR:       reussir.ref.project
+// CHECK-MLIR:       reussir.ref.load
+// CHECK-MLIR:       reussir.rc.inc
+// CHECK-MLIR:       reussir.rc.dec (%0 :
+// CHECK-MLIR:       func.call @"_RC8tree_sum"
+// CHECK-MLIR:       func.call @"_RC8tree_sum"

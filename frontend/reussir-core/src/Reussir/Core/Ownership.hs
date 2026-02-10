@@ -4,21 +4,23 @@ module Reussir.Core.Ownership (
     isRR,
 ) where
 
+import Data.Foldable (toList)
 import Data.IntMap.Strict (IntMap)
+
+import Data.HashMap.Strict qualified as HashMap
+import Data.HashTable.IO qualified as HT
 import Data.IntMap.Strict qualified as IntMap
 import Data.IntSet qualified as IntSet
-import Data.Foldable (toList)
-import Data.HashMap.Strict qualified as HashMap
 import Data.Vector.Strict qualified as V
-
-import Data.HashTable.IO qualified as HT
 import Reussir.Codegen.Type.Data qualified as IRType
+
+import Reussir.Core.Data.Ownership
+import Reussir.Core.Data.UniqueID (ExprID (..), VarID (..))
+
 import Reussir.Core.Data.Full.Expr qualified as Full
 import Reussir.Core.Data.Full.Function qualified as Full
 import Reussir.Core.Data.Full.Record qualified as Full
 import Reussir.Core.Data.Full.Type qualified as Full
-import Reussir.Core.Data.Ownership
-import Reussir.Core.Data.UniqueID (ExprID (..), VarID (..))
 
 -- | Is the type directly RC-managed?
 isRC :: Full.Type -> Bool
@@ -26,8 +28,9 @@ isRC (Full.TypeRc _ cap) = cap `elem` [IRType.Shared, IRType.Flex, IRType.Rigid]
 isRC (Full.TypeClosure _ _) = True
 isRC _ = False
 
--- | Is the type resource-relevant (transitively contains RC)?
--- Needs FullRecordTable for record field lookup.
+{- | Is the type resource-relevant (transitively contains RC)?
+Needs FullRecordTable for record field lookup.
+-}
 isRR :: Full.FullRecordTable -> Full.Type -> IO Bool
 isRR _ ty | isRC ty = pure True
 isRR tbl (Full.TypeNullable inner) = isRR tbl inner
@@ -35,6 +38,8 @@ isRR tbl (Full.TypeRecord sym) = do
     rec <- HT.lookup tbl sym
     case rec of
         Nothing -> pure False
+        Just r | Full.recordDefaultCap r == IRType.Shared -> pure True
+        Just r | Full.recordDefaultCap r == IRType.Regional -> pure True
         Just r -> case Full.recordFields r of
             Full.Components fields ->
                 V.foldM'
@@ -57,11 +62,11 @@ emptyState = AnalysisState IntMap.empty IntMap.empty
 
 -- | Add an annotation for an expression
 annotate :: ExprID -> OwnershipAction -> AnalysisState -> AnalysisState
-annotate (ExprID eid) action st =
-    st
-        { asAnnotations =
-            IntMap.insertWith mergeAction eid action (asAnnotations st)
-        }
+annotate eid action st =
+    let currentActions =
+            IntMap.findWithDefault (OwnershipAction [] []) (unExprID eid) (asAnnotations st)
+        newActions = mergeAction currentActions action
+     in st{asAnnotations = IntMap.insert (unExprID eid) newActions (asAnnotations st)}
 
 -- | Grant ownership of a variable (set count to 1 or increment)
 grantOwnership :: VarID -> AnalysisState -> AnalysisState
@@ -84,7 +89,8 @@ removeFromLedger (VarID vid) st =
     st{asLedger = IntMap.delete vid (asLedger st)}
 
 -- | Analyze an entire function and produce ownership annotations
-analyzeFunction :: Full.FullRecordTable -> Full.Function -> IO OwnershipAnnotations
+analyzeFunction ::
+    Full.FullRecordTable -> Full.Function -> IO OwnershipAnnotations
 analyzeFunction tbl func = case Full.funcBody func of
     Nothing -> pure $ OwnershipAnnotations IntMap.empty
     Just body -> do
@@ -100,7 +106,11 @@ analyzeFunction tbl func = case Full.funcBody func of
 
 -- | Initialize ownership for function parameters
 initParamOwnership ::
-    Full.FullRecordTable -> [(a, Full.Type)] -> Int -> AnalysisState -> IO AnalysisState
+    Full.FullRecordTable ->
+    [(a, Full.Type)] ->
+    Int ->
+    AnalysisState ->
+    IO AnalysisState
 initParamOwnership _ [] _ st = pure st
 initParamOwnership tbl ((_, ty) : rest) idx st = do
     rr <- isRR tbl ty
@@ -122,8 +132,9 @@ emitEndOfScopeDecs st eid =
             then st
             else annotate eid (OwnershipAction [] decs) st
 
--- | Emit early decs for owned variables not referenced by remaining expressions.
--- Returns updated state with decs annotated and ownership consumed.
+{- | Emit early decs for owned variables not referenced by remaining expressions.
+Returns updated state with decs annotated and ownership consumed.
+-}
 emitEarlyDecs :: AnalysisState -> ExprID -> IntSet.IntSet -> AnalysisState
 emitEarlyDecs st eid suffixFreeVars =
     let toDec =
@@ -145,8 +156,9 @@ emitEarlyDecs st eid suffixFreeVars =
             st'
             toDec
 
--- | Collect all free variable references (VarIDs) in an expression.
--- This is a pure syntactic traversal.
+{- | Collect all free variable references (VarIDs) in an expression.
+This is a pure syntactic traversal.
+-}
 collectFreeVars :: Full.Expr -> IntSet.IntSet
 collectFreeVars expr = case Full.exprKind expr of
     Full.Var (VarID vid) -> IntSet.singleton vid
@@ -198,7 +210,10 @@ collectFreeVarsCases (Full.DTSwitchString strMap dtDef) =
 
 -- | Core recursive analysis of an expression
 analyzeExpr ::
-    Full.FullRecordTable -> Full.Expr -> AnalysisState -> IO (AnalysisState, ExprFlux)
+    Full.FullRecordTable ->
+    Full.Expr ->
+    AnalysisState ->
+    IO (AnalysisState, ExprFlux)
 analyzeExpr tbl expr st = do
     let eid = Full.exprID expr
     let ty = Full.exprType expr
@@ -295,7 +310,9 @@ analyzeExpr tbl expr st = do
             -- Reconcile branches
             let (reconciledLedger, st5) =
                     reconcileBranches
-                        [(thenLedger, Full.exprID thenExpr), (elseLedger, Full.exprID elseExpr)]
+                        [ (thenLedger, Full.exprID thenExpr, collectFreeVars thenExpr)
+                        , (elseLedger, Full.exprID elseExpr, collectFreeVars elseExpr)
+                        ]
                         st4'
             pure (st5{asLedger = reconciledLedger}, emptyFlux)
         -- Match expression
@@ -309,9 +326,10 @@ analyzeExpr tbl expr st = do
         -- Region run
         Full.RegionRun bodyExpr -> analyzeExpr tbl bodyExpr st
 
--- | Analyze a sequence of expressions (handling Let bindings).
--- Uses precomputed suffix free-var sets to place decs at the earliest
--- possible point after a variable's last use.
+{- | Analyze a sequence of expressions (handling Let bindings).
+Uses precomputed suffix free-var sets to place decs at the earliest
+possible point after a variable's last use.
+-}
 analyzeSequence ::
     Full.FullRecordTable ->
     [Full.Expr] ->
@@ -326,16 +344,17 @@ analyzeSequence tbl exprs st = do
     let suffixes = drop 1 $ scanr IntSet.union IntSet.empty freeVarSets
     analyzeSequenceEarly tbl (zip exprs suffixes) st []
 
--- | Process a sequence of expressions with early dec placement.
--- After each non-last expression, emit decs for owned variables not
--- referenced by any remaining expression.
+{- | Process a sequence of expressions with early dec placement.
+After each non-last expression, emit decs for owned variables not
+referenced by any remaining expression.
+-}
 analyzeSequenceEarly ::
     Full.FullRecordTable ->
+    -- | Pairs of (expression, free vars of all subsequent expressions)
     [(Full.Expr, IntSet.IntSet)] ->
-    -- ^ Pairs of (expression, free vars of all subsequent expressions)
     AnalysisState ->
+    -- | Let-bound variables in scope (to clean up from ledger)
     [VarID] ->
-    -- ^ Let-bound variables in scope (to clean up from ledger)
     IO (AnalysisState, ExprFlux)
 analyzeSequenceEarly _ [] st scopedVars = do
     -- Clean up let-bound variables from ledger
@@ -365,7 +384,6 @@ analyzeSequenceEarly tbl ((e, suffixVars) : rest) st scopedVars =
             -- Emit early decs for owned variables no longer needed
             let st2 = emitEarlyDecs st1 (Full.exprID e) suffixVars
             analyzeSequenceEarly tbl rest st2 scopedVars
-
 
 -- | Analyze a function/intrinsic/constructor call where arguments are consumed
 analyzeConsumingCall ::
@@ -404,8 +422,10 @@ analyzeConsumedArgsLoop tbl (arg : restArgs) (vars : restVars) (suffix : restSuf
     -- Identify vars that are in this arg AND in suffix (needed later)
     -- We must inc them before this arg consumes them.
     let neededLater = IntSet.intersection vars suffix
-    let incs = [VarID vid | vid <- IntSet.toList neededLater, ownershipCount (VarID vid) st > 0]
-    
+    let incs =
+            [ VarID vid | vid <- IntSet.toList neededLater, ownershipCount (VarID vid) st > 0
+            ]
+
     let incOps = map OIncVar incs
     let stBefore =
             if null incOps
@@ -413,7 +433,7 @@ analyzeConsumedArgsLoop tbl (arg : restArgs) (vars : restVars) (suffix : restSuf
                 else annotate (Full.exprID arg) (OwnershipAction incOps []) st
     -- Grant ownership for each inc so consumption tracking is correct
     let stInc = foldl' (\s vid -> grantOwnership vid s) stBefore incs
-    
+
     (stAfter, argFlux) <- analyzeExpr tbl arg stInc
     -- Consume free vars from this argument
     let stConsumed = consumeFreeVars argFlux stAfter
@@ -435,8 +455,8 @@ analyzeDecisionTree ::
     Full.DecisionTree ->
     AnalysisState ->
     Full.Type ->
+    -- | Scrutinee var IDs (to dec inside each branch)
     IntSet.IntSet ->
-    -- ^ Scrutinee var IDs (to dec inside each branch)
     IO (AnalysisState, ExprFlux)
 analyzeDecisionTree _ Full.DTUncovered st _ _ = pure (st, emptyFlux)
 analyzeDecisionTree _ Full.DTUnreachable st _ _ = pure (st, emptyFlux)
@@ -468,7 +488,11 @@ analyzeDecisionTree tbl (Full.DTLeaf body bindings) st scrutTy scrutVarIDs = do
                 scrutVarIDs
     -- Clean up pattern-local vars from ledger
     let patternVarIDs = IntMap.keys bindings
-    let st6 = foldl' (\s vid -> removeFromLedger (VarID (fromIntegral vid)) s) st5 patternVarIDs
+    let st6 =
+            foldl'
+                (\s vid -> removeFromLedger (VarID (fromIntegral vid)) s)
+                st5
+                patternVarIDs
     pure (st6, emptyFlux)
 analyzeDecisionTree tbl (Full.DTGuard bindings guardExpr dtTrue dtFalse) st scrutTy scrutVarIDs = do
     -- Process bindings
@@ -493,9 +517,10 @@ analyzeDecisionTree tbl (Full.DTGuard bindings guardExpr dtTrue dtFalse) st scru
 analyzeDecisionTree tbl (Full.DTSwitch _ cases) st scrutTy scrutVarIDs =
     analyzeDTSwitchCases tbl cases st scrutTy scrutVarIDs
 
--- | Grant ownership for pattern bindings that have RC types.
--- Pattern bindings extract values from inside the borrowed scrutinee.
--- RC-typed bindings need rc.inc (emitted by the DT lowering) and ownership tracking.
+{- | Grant ownership for pattern bindings that have RC types.
+Pattern bindings extract values from inside the borrowed scrutinee.
+RC-typed bindings need rc.inc (emitted by the DT lowering) and ownership tracking.
+-}
 grantPatternBindingOwnership ::
     Full.FullRecordTable ->
     IntMap Full.PatternVarRef ->
@@ -506,7 +531,9 @@ grantPatternBindingOwnership tbl bindings st scrutTy = do
     foldlM'
         ( \s (vid, pvRef) -> do
             -- Resolve the type at the end of the projection path
-            bindingTy <- resolveBindingType tbl scrutTy (toList (Full.unPatternVarRef pvRef))
+            -- Drop the first index (root var ID) from the path
+            bindingTy <-
+                resolveBindingType tbl scrutTy (drop 1 $ toList (Full.unPatternVarRef pvRef))
             rr <- isRR tbl bindingTy
             pure $ if rr then grantOwnership (VarID (fromIntegral vid)) s else s
         )
@@ -549,6 +576,7 @@ analyzeDTSwitchCases tbl cases st scrutTy scrutVarIDs = do
     let ledgerBefore = asLedger st
     case cases of
         Full.DTSwitchBool dtTrue dtFalse -> do
+            -- Bool doesn't refine type structurally (just value)
             (st1, _) <- analyzeDecisionTree tbl dtTrue st scrutTy scrutVarIDs
             let trueLedger = asLedger st1
             let st2 = st1{asLedger = ledgerBefore}
@@ -560,16 +588,47 @@ analyzeDTSwitchCases tbl cases st scrutTy scrutVarIDs = do
                         st3
             pure (st4{asLedger = reconciledLedger}, emptyFlux)
         Full.DTSwitchCtor ctorCases -> do
-            branchResults <- V.foldM' (analyzeBranch tbl ledgerBefore scrutTy scrutVarIDs) ([], st) ctorCases
-            let (branchLedgers, stFinal) = branchResults
-            let (reconciledLedger, stReconciled) =
-                    reconcileBranchesWithDT branchLedgers stFinal
-            pure (stReconciled{asLedger = reconciledLedger}, emptyFlux)
+            -- Refine scrutTy for each variant
+            results <-
+                V.imapM
+                    ( \idx dt -> do
+                        (l, dt', s') <- analyzeCtorBranch tbl ledgerBefore scrutTy scrutVarIDs st idx dt
+                        pure (l, dt', s')
+                    )
+                    ctorCases
+
+            let branchLedgers = V.toList $ V.map (\(l, dt', _) -> (l, dt')) results
+            let branchStates = V.toList $ V.map (\(_, _, s) -> s) results
+
+            -- Reconcile ledgers to find common exit state
+            let (reconciledLedger, stReconciledBase) =
+                    reconcileBranchesWithDT branchLedgers st
+
+            -- MERGE ANNOTATIONS: Union the annotations from all branches into the reconciled state
+            let mergedAnnotations =
+                    foldl'
+                        (\acc s -> IntMap.union acc (asAnnotations s))
+                        (asAnnotations stReconciledBase)
+                        branchStates
+
+            let stReconciled =
+                    stReconciledBase
+                        { asLedger = reconciledLedger
+                        , asAnnotations = mergedAnnotations
+                        }
+
+            pure (stReconciled, emptyFlux)
         Full.DTSwitchNullable dtJust dtNothing -> do
-            (st1, _) <- analyzeDecisionTree tbl dtJust st scrutTy scrutVarIDs
+            -- Refine scrutTy for just case: extract inner type
+            innerTy <- case scrutTy of
+                Full.TypeNullable t -> pure t
+                _ -> pure scrutTy -- Should be nullable, but fallback
+            (st1, _) <- analyzeDecisionTree tbl dtJust st innerTy scrutVarIDs
             let justLedger = asLedger st1
             let st2 = st1{asLedger = ledgerBefore}
-            (st3, _) <- analyzeDecisionTree tbl dtNothing st2 scrutTy scrutVarIDs
+            -- Nothing case uses Unit? Or original null?
+            -- Usually nothing binds to Unit.
+            (st3, _) <- analyzeDecisionTree tbl dtNothing st2 Full.TypeUnit scrutVarIDs
             let nothingLedger = asLedger st3
             let (reconciledLedger, st4) =
                     reconcileBranchesWithDT
@@ -578,60 +637,90 @@ analyzeDTSwitchCases tbl cases st scrutTy scrutVarIDs = do
             pure (st4{asLedger = reconciledLedger}, emptyFlux)
         Full.DTSwitchInt intMap dtDefault -> do
             let intCases = IntMap.toList intMap
-            (branchLedgers1, st1) <-
-                foldlM'
-                    ( \(acc, s) (_, dt) -> do
-                        let s' = s{asLedger = ledgerBefore}
+            results <-
+                mapM
+                    ( \(_, dt) -> do
+                        let s' = st{asLedger = ledgerBefore}
                         (s'', _) <- analyzeDecisionTree tbl dt s' scrutTy scrutVarIDs
-                        pure ((asLedger s'', dt) : acc, s'')
+                        pure (asLedger s'', dt, s'')
                     )
-                    ([], st)
                     intCases
-            let st2 = st1{asLedger = ledgerBefore}
-            (st3, _) <- analyzeDecisionTree tbl dtDefault st2 scrutTy scrutVarIDs
-            let defaultLedger = asLedger st3
-            let allBranches = (defaultLedger, dtDefault) : branchLedgers1
-            let (reconciledLedger, st4) = reconcileBranchesWithDT allBranches st3
-            pure (st4{asLedger = reconciledLedger}, emptyFlux)
+
+            let stDefaultStart = st{asLedger = ledgerBefore}
+            (stDefault, _) <-
+                analyzeDecisionTree tbl dtDefault stDefaultStart scrutTy scrutVarIDs
+
+            let branchLedgers = ((asLedger stDefault, dtDefault) : map (\(l, dt, _) -> (l, dt)) results)
+            let branchStates = (stDefault : map (\(_, _, s) -> s) results)
+
+            let (reconciledLedger, stReconciledBase) = reconcileBranchesWithDT branchLedgers st
+
+            -- MERGE ANNOTATIONS
+            let mergedAnnotations =
+                    foldl'
+                        (\acc s -> IntMap.union acc (asAnnotations s))
+                        (asAnnotations stReconciledBase)
+                        branchStates
+
+            let stReconciled =
+                    stReconciledBase
+                        { asLedger = reconciledLedger
+                        , asAnnotations = mergedAnnotations
+                        }
+            pure (stReconciled, emptyFlux)
         Full.DTSwitchString _stringMap dtDefault -> do
-            -- TODO: handle string switch cases properly
+            -- String switch
             (st1, flux) <- analyzeDecisionTree tbl dtDefault st scrutTy scrutVarIDs
             pure (st1, flux)
 
--- | Helper for analyzing branches in a fold
-analyzeBranch ::
+-- | Helper for analyzing ctor branches
+analyzeCtorBranch ::
     Full.FullRecordTable ->
     IntMap Int ->
     Full.Type ->
     IntSet.IntSet ->
-    ([(IntMap Int, Full.DecisionTree)], AnalysisState) ->
+    AnalysisState ->
+    Int ->
     Full.DecisionTree ->
-    IO ([(IntMap Int, Full.DecisionTree)], AnalysisState)
-analyzeBranch tbl ledgerBefore scrutTy scrutVarIDs (acc, st) dt = do
+    IO (IntMap Int, Full.DecisionTree, AnalysisState)
+analyzeCtorBranch tbl ledgerBefore scrutTy scrutVarIDs st idx dt = do
     let st' = st{asLedger = ledgerBefore}
-    (st'', _) <- analyzeDecisionTree tbl dt st' scrutTy scrutVarIDs
-    pure ((asLedger st'', dt) : acc, st'')
+    -- Determine variant type
+    variantTy <- case scrutTy of
+        Full.TypeRecord s -> getVariantType s
+        Full.TypeRc (Full.TypeRecord s) _ -> getVariantType s
+        _ -> pure scrutTy
 
--- | Reconcile ownership across branches (for if/else).
--- For each variable, take the minimum consumption (= maximum remaining count).
--- Under-consuming branches get additional dec annotations at their exit.
+    (st'', _) <- analyzeDecisionTree tbl dt st' variantTy scrutVarIDs
+    pure (asLedger st'', dt, st'')
+  where
+    getVariantType s = do
+        rec <- HT.lookup tbl s
+        case rec of
+            Just r
+                | Full.Variants vs <- Full.recordFields r
+                , idx < V.length vs ->
+                    pure $ Full.TypeRecord (vs V.! idx)
+            _ -> pure scrutTy
+
+-- | Under-consuming branches get additional dec annotations at their exit.
 reconcileBranches ::
-    [(IntMap Int, ExprID)] ->
+    [(IntMap Int, ExprID, IntSet.IntSet)] ->
     AnalysisState ->
     (IntMap Int, AnalysisState)
 reconcileBranches branches st =
-    let allVars = IntSet.unions $ map (IntMap.keysSet . fst) branches
+    let allVars = IntSet.unions $ map (\(l, _, _) -> IntMap.keysSet l) branches
         -- For each var, find the minimum count across branches (most consumed)
         minCounts = IntSet.foldl' findMin IntMap.empty allVars
           where
             findMin acc vid =
-                let counts = map (\(ledger, _) -> IntMap.findWithDefault 0 vid ledger) branches
+                let counts = map (\(ledger, _, _) -> IntMap.findWithDefault 0 vid ledger) branches
                     minCount = minimum counts
                  in IntMap.insert vid minCount acc
         -- Emit decs for under-consuming branches
         st' = foldl' reconcileBranch st branches
           where
-            reconcileBranch s (ledger, branchEid) =
+            reconcileBranch s (ledger, branchEid, usedVars) =
                 IntSet.foldl'
                     ( \s' vid ->
                         let branchCount = IntMap.findWithDefault 0 vid ledger
@@ -639,10 +728,14 @@ reconcileBranches branches st =
                             excess = branchCount - targetCount
                          in if excess > 0
                                 then
-                                    annotate
-                                        branchEid
-                                        (OwnershipAction [] (replicate excess (ODecVar (VarID vid))))
-                                        s'
+                                    let action =
+                                            if vid `IntSet.member` usedVars
+                                                then OwnershipAction [] (replicate excess (ODecVar (VarID vid))) -- Late drop
+                                                else OwnershipAction (replicate excess (ODecVar (VarID vid))) [] -- Early drop
+                                     in annotate
+                                            branchEid
+                                            action
+                                            s'
                                 else s'
                     )
                     s
@@ -655,13 +748,15 @@ reconcileBranchesWithDT ::
     AnalysisState ->
     (IntMap Int, AnalysisState)
 reconcileBranchesWithDT branches st =
-    let -- Convert DT branches to ExprID branches where possible
+    let
+        -- Convert DT branches to ExprID branches where possible
         exprBranches =
-            [ (ledger, eid)
+            [ (ledger, eid, used)
             | (ledger, dt) <- branches
-            , Just eid <- [dtExitExprID dt]
+            , Just (eid, used) <- [dtExitExprInfo dt]
             ]
-     in if null exprBranches
+     in
+        if null exprBranches
             then
                 -- If no branches have exit ExprIDs, just pick first ledger
                 case branches of
@@ -669,11 +764,11 @@ reconcileBranchesWithDT branches st =
                     ((ledger, _) : _) -> (ledger, st)
             else reconcileBranches exprBranches st
 
--- | Get the exit ExprID of a decision tree (the last expression evaluated)
-dtExitExprID :: Full.DecisionTree -> Maybe ExprID
-dtExitExprID (Full.DTLeaf body _) = Just (Full.exprID body)
-dtExitExprID (Full.DTGuard _ guardExpr _ _) = Just (Full.exprID guardExpr)
-dtExitExprID _ = Nothing
+-- | Get the exit ExprID and used vars for optimization
+dtExitExprInfo :: Full.DecisionTree -> Maybe (ExprID, IntSet.IntSet)
+dtExitExprInfo (Full.DTLeaf body _) = Just (Full.exprID body, collectFreeVars body)
+dtExitExprInfo (Full.DTGuard _ guardExpr _ _) = Just (Full.exprID guardExpr, collectFreeVars guardExpr)
+dtExitExprInfo _ = Nothing
 
 -- | Strict left fold for IO
 foldlM' :: (Monad m) => (b -> a -> m b) -> b -> [a] -> m b

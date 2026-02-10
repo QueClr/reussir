@@ -64,10 +64,10 @@ fn fibonacci_u64(n : u64) -> u64 {
 // CHECK-MLIR-LABEL: func.func @"_RIC26fibonacci_logarithmic_implyE"(%0 : i64, %1 :
 // n==0 true branch: borrow a, load field, dec both b and a
 // CHECK-MLIR:       scf.if
+// CHECK-MLIR:       reussir.rc.dec (%2 :
 // CHECK-MLIR:       reussir.rc.borrow (%1 :
 // CHECK-MLIR:       reussir.ref.project
 // CHECK-MLIR:       reussir.ref.load
-// CHECK-MLIR:       reussir.rc.dec (%2 :
 // CHECK-MLIR-NEXT:  reussir.rc.dec (%1 :
 // CHECK-MLIR:       scf.yield
 // n%2==1 branch: inc b before first matmul, inc b before second matmul
