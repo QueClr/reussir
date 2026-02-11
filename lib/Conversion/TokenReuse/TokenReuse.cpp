@@ -329,11 +329,19 @@ struct TokenReusePass : public impl::ReussirTokenReusePassBase<TokenReusePass> {
             if (auto scfIf = dyn_cast_or_null<mlir::scf::IfOp>(
                     tokenVal.getDefiningOp())) {
               if (scfIf->hasAttr(kExpandedDecrementAttr)) {
-                TokenType producedType = cast<TokenType>(
-                    cast<NullableType>(scfIf.getResult(0).getType())
-                        .getPtrTy());
+                auto nullableType =
+                    dyn_cast<NullableType>(scfIf.getResult(0).getType());
+                if (!nullableType)
+                  continue;
+                auto producedType =
+                    dyn_cast<TokenType>(nullableType.getPtrTy());
+                if (!producedType)
+                  continue;
                 mlir::Value condition = scfIf.getCondition();
-                auto cmp = cast<mlir::arith::CmpIOp>(condition.getDefiningOp());
+                auto cmp = dyn_cast_or_null<mlir::arith::CmpIOp>(
+                    condition.getDefiningOp());
+                if (!cmp)
+                  continue;
                 auto rcFetchDec =
                     llvm::dyn_cast_if_present<ReussirRcFetchDecOp>(
                         cmp.getLhs().getDefiningOp());
@@ -369,13 +377,18 @@ struct TokenReusePass : public impl::ReussirTokenReusePassBase<TokenReusePass> {
     }
 
     mlir::Operation *terminator = region.front().getTerminator();
+    // Collect tokens to free first, then erase them. Modifying the immer::set
+    // during iteration would invalidate iterators (use-after-free).
+    llvm::SmallVector<mlir::Value> tokensToFree;
     for (auto token : availableTokens) {
       if (!region.getParentOp() ||
           !domInfo.properlyDominates(token, region.getParentOp())) {
         frees.push_back({token, terminator});
-        availableTokens = availableTokens.erase(token);
+        tokensToFree.push_back(token);
       }
     }
+    for (auto token : tokensToFree)
+      availableTokens = availableTokens.erase(token);
     return availableTokens;
   }
 
