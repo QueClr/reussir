@@ -1865,19 +1865,13 @@ static bool needsWindowsSret(const LLVMTypeConverter &converter,
   const auto &triple = converter.getTargetTriple();
   if (!triple.isOSWindows() || triple.getArch() != llvm::Triple::x86_64)
     return false;
-  // only POD <= 8 bytes can be returned in registers
-  if (resultTypes.size() > 1) {
-    auto packed = converter.packFunctionResults(resultTypes);
-    auto packedSize = converter.getDataLayout().getTypeSize(packed);
-    return packedSize > 8;
-  }
-  if (resultTypes.size() == 1 &&
-      converter.getDataLayout().getTypeSize(resultTypes.front()) <= 8)
+  if (resultTypes.empty())
     return false;
-  if (resultTypes.size() < 1)
+  auto packedType = converter.packFunctionResults(resultTypes);
+  if (!packedType)
     return false;
-  // Multiple results get packed into a struct — always needs sret on Win64
-  return true;
+  auto size = converter.getDataLayout().getTypeSize(packedType);
+  return size > 8;
 }
 
 static bool needsWindowsByVal(const LLVMTypeConverter &converter,
@@ -1886,12 +1880,8 @@ static bool needsWindowsByVal(const LLVMTypeConverter &converter,
   if (!triple.isOSWindows() || triple.getArch() != llvm::Triple::x86_64)
     return false;
 
-  if (auto structType = llvm::dyn_cast<mlir::LLVM::LLVMStructType>(type)) {
-    // Debugging: assume all structs are passed by reference on Windows
-    // This covers ReussirStr (16 bytes).
-    return true;
-  }
-  return false;
+  auto size = converter.getDataLayout().getTypeSize(type);
+  return size > 8;
 }
 
 //===----------------------------------------------------------------------===//
@@ -2257,13 +2247,18 @@ struct ReussirCallOpConversionPattern
       auto loaded = rewriter.create<mlir::LLVM::LoadOp>(op.getLoc(), packedType,
                                                         sretAlloca);
 
-      // Extract individual values
-      llvm::SmallVector<mlir::Value> results;
-      for (unsigned i = 0, e = op.getNumResults(); i < e; ++i) {
-        results.push_back(rewriter.create<mlir::LLVM::ExtractValueOp>(
-            op.getLoc(), loaded, i));
+      if (op.getNumResults() == 1) {
+        // Single result: the loaded struct IS the result (e.g., a record type)
+        rewriter.replaceOp(op, mlir::ValueRange{loaded});
+      } else {
+        // Multiple results: extract individual values from packed struct
+        llvm::SmallVector<mlir::Value> results;
+        for (unsigned i = 0, e = op.getNumResults(); i < e; ++i) {
+          results.push_back(rewriter.create<mlir::LLVM::ExtractValueOp>(
+              op.getLoc(), loaded, i));
+        }
+        rewriter.replaceOp(op, results);
       }
-      rewriter.replaceOp(op, results);
     } else {
       // Non-sret path: original behavior
       llvm::SmallVector<mlir::Type> resultTypes;
