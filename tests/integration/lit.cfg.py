@@ -1,4 +1,5 @@
 import lit.formats
+import os
 import sys
 
 config.name = 'Reussir'
@@ -30,10 +31,15 @@ config.substitutions.append((r'%reussir-compiler', config.reussir_compiler_path)
 config.substitutions.append((r'%reussir-repl', config.reussir_repl_path))
 config.substitutions.append((r'%reussir-parser', config.reussir_parser_path))
 
-# TODO: should we support macos?
-if sys.platform == 'windows':
+# Platform features for REQUIRES/UNSUPPORTED directives
+if sys.platform == 'win32':
+    config.available_features.add('system-windows')
     config.substitutions.append((r'%reussir_rt', 'reussir_rt.dll'))
+    # Ensure build output directory is in PATH for DLL resolution
+    config.environment['PATH'] = config.library_path + os.pathsep + os.environ.get('PATH', '')
 elif sys.platform == 'darwin':
+    config.available_features.add('system-darwin')
     config.substitutions.append((r'%reussir_rt', 'libreussir_rt.dylib'))
 else:
+    config.available_features.add('system-linux')
     config.substitutions.append((r'%reussir_rt', 'libreussir_rt.so'))

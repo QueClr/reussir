@@ -1,3 +1,4 @@
+// UNSUPPORTED: system-windows
 // RUN: %reussir-opt %s \
 // RUN:   --reussir-lowering-scf-ops \
 // RUN:   --convert-scf-to-cf \
