@@ -4,7 +4,7 @@
 !pair = !reussir.record<compound "Pair" {i32, i64}>
 
 module {
-  func.func @test_extract(%pair : !pair) -> i64 {
+  reussir.func @test_extract(%pair : !pair) -> i64 {
     %0 = reussir.record.extract(%pair : !pair)[1] : i64
     return %0 : i64
   }

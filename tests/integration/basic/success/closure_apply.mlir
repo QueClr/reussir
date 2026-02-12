@@ -3,7 +3,7 @@
 // Test successful closure apply operations
 module attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> : vector<2xi64>>>} {
   // Test basic closure apply with single argument
-  func.func private @test_closure_apply_basic() -> !reussir.rc<!reussir.closure<() -> i32>> {
+  reussir.func private @test_closure_apply_basic() -> !reussir.rc<!reussir.closure<() -> i32>> {
     %token = reussir.token.alloc : !reussir.token<align: 8, size: 32>
     %closure = reussir.closure.create -> !reussir.rc<!reussir.closure<(i32) -> i32>> {
       token(%token : !reussir.token<align: 8, size: 32>)
@@ -20,7 +20,7 @@ module attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> :
   }
 
   // Test closure apply with multiple arguments
-  func.func private @test_closure_apply_multiple() -> !reussir.rc<!reussir.closure<(i64) -> i32>> {
+  reussir.func private @test_closure_apply_multiple() -> !reussir.rc<!reussir.closure<(i64) -> i32>> {
     %token = reussir.token.alloc : !reussir.token<align: 8, size: 40>
     %closure = reussir.closure.create -> !reussir.rc<!reussir.closure<(i32, i64) -> i32>> {
       token(%token : !reussir.token<align: 8, size: 40>)
@@ -38,7 +38,7 @@ module attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> :
   }
 
   // Test closure apply with void return type
-  func.func private @test_closure_apply_void() -> !reussir.rc<!reussir.closure<()>> {
+  reussir.func private @test_closure_apply_void() -> !reussir.rc<!reussir.closure<()>> {
     %token = reussir.token.alloc : !reussir.token<align: 8, size: 32>
     %closure = reussir.closure.create -> !reussir.rc<!reussir.closure<(i32)>> {
       token(%token : !reussir.token<align: 8, size: 32>)
@@ -53,7 +53,7 @@ module attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> :
   }
 
   // Test closure apply with complex types
-  func.func private @test_closure_apply_complex() -> !reussir.rc<!reussir.closure<(i32) -> i64>> {
+  reussir.func private @test_closure_apply_complex() -> !reussir.rc<!reussir.closure<(i32) -> i64>> {
     %token = reussir.token.alloc : !reussir.token<align: 8, size: 48>
     %closure = reussir.closure.create -> !reussir.rc<!reussir.closure<(i32, i64, i32) -> i64>> {
       token(%token : !reussir.token<align: 8, size: 48>)

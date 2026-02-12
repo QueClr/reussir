@@ -1,7 +1,7 @@
 // RUN: %reussir-opt %s | %FileCheck %s
 module @test {
-  // CHECK: func.func private @drop_func
-  func.func private @drop_func(%ptr : !reussir.ref<i32>) -> () {
+  // CHECK: reussir.func private @drop_func
+  reussir.func private @drop_func(%ptr : !reussir.ref<i32>) -> () {
     return
   }
   

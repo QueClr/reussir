@@ -35,7 +35,7 @@ struct AttachVTablePattern : public mlir::OpRewritePattern<ReussirRcCreateOp> {
 private:
   ReussirRegionVTableOp
   createVTableIfNotExists(mlir::ModuleOp moduleOp, RecordType type,
-                          mlir::func::FuncOp dropOp,
+                          ReussirFuncOp dropOp,
                           mlir::OpBuilder &builder) const {
     mlir::SymbolTable symbolTable(moduleOp);
     llvm::Twine vtablePrefix = "_RINvNvC4core8regional6vtable";
@@ -65,7 +65,7 @@ public:
     mlir::Type elementType = op.getRcPtr().getType().getElementType();
     RecordType recordType = llvm::dyn_cast<RecordType>(elementType);
     auto moduleOp = op->getParentOfType<mlir::ModuleOp>();
-    mlir::func::FuncOp dropFunc =
+    ReussirFuncOp dropFunc =
         createDtorIfNotExists(moduleOp, recordType, rewriter);
     ReussirRegionVTableOp vtableOp =
         createVTableIfNotExists(moduleOp, recordType, dropFunc, rewriter);

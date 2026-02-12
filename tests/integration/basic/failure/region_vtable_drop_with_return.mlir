@@ -2,7 +2,7 @@
 
 module @test {
   // Drop function with return value
-  func.func private @drop_func_with_return(%ptr : !reussir.ref<i32>) -> i32 {
+  reussir.func private @drop_func_with_return(%ptr : !reussir.ref<i32>) -> i32 {
     %c1 = arith.constant 1 : i32
     return %c1 : i32
   }

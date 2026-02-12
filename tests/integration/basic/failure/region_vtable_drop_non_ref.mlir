@@ -2,7 +2,7 @@
 
 module @test {
   // Drop function with non-RefType parameter
-  func.func private @drop_func_non_ref(%val : i32) -> () {
+  reussir.func private @drop_func_non_ref(%val : i32) -> () {
     return
   }
   

@@ -14,8 +14,10 @@
 #define REUSSIR_IR_REUSSIROPS_TD
 
 include "mlir/IR/AttrTypeBase.td"
+include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/RegionKindInterface.td"
+include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Dialect/Arith/IR/ArithBase.td"
 include "Reussir/IR/ReussirDialect.td"
 include "Reussir/IR/ReussirAttrs.td"
@@ -39,6 +41,125 @@ def ReussirPanicOp : ReussirOp<"panic", []> {
 
   let assemblyFormat = [{
     $message attr-dict
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// Reussir Function Operations
+//===----------------------------------------------------------------------===//
+
+def ReussirFuncOp : ReussirOp<"func", [
+    AutomaticAllocationScope, CallableOpInterface, FunctionOpInterface,
+    IsolatedFromAbove, OpAsmOpInterface, Symbol
+]> {
+  let summary = "Function operation with CABI-aware lowering";
+  let description = [{
+    `reussir.func` defines a function that lowers to LLVM with CABI-aware
+    adjustments (e.g. `sret` for struct returns on Windows x64).
+    It replaces `func.func` in the Reussir pipeline.
+  }];
+
+  let arguments = (ins SymbolNameAttr:$sym_name,
+                       TypeAttrOf<FunctionType>:$function_type,
+                       OptionalAttr<StrAttr>:$sym_visibility,
+                       OptionalAttr<DictArrayAttr>:$arg_attrs,
+                       OptionalAttr<DictArrayAttr>:$res_attrs);
+  let regions = (region AnyRegion:$body);
+
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+
+  let builders = [OpBuilder<(ins
+    "llvm::StringRef":$name, "mlir::FunctionType":$type,
+    CArg<"llvm::ArrayRef<mlir::NamedAttribute>", "{}">:$attrs,
+    CArg<"llvm::ArrayRef<mlir::DictionaryAttr>", "{}">:$argAttrs)
+  >];
+
+  let extraClassDeclaration = [{
+    //===------------------------------------------------------------------===//
+    // CallableOpInterface
+    //===------------------------------------------------------------------===//
+    mlir::Region *getCallableRegion() { return isExternal() ? nullptr : &getBody(); }
+
+    //===------------------------------------------------------------------===//
+    // FunctionOpInterface Methods
+    //===------------------------------------------------------------------===//
+    /// Returns the argument types of this function.
+    llvm::ArrayRef<mlir::Type> getArgumentTypes() { return getFunctionType().getInputs(); }
+
+    /// Returns the result types of this function.
+    llvm::ArrayRef<mlir::Type> getResultTypes() { return getFunctionType().getResults(); }
+
+    //===------------------------------------------------------------------===//
+    // OpAsmOpInterface Methods
+    //===------------------------------------------------------------------===//
+    static llvm::StringRef getDefaultDialect() { return "reussir"; }
+
+    //===------------------------------------------------------------------===//
+    // SymbolOpInterface Methods
+    //===------------------------------------------------------------------===//
+    bool isDeclaration() { return isExternal(); }
+  }];
+}
+
+def ReussirReturnOp : ReussirOp<"return", [
+    Pure, HasParent<"ReussirFuncOp">, ReturnLike, Terminator
+]> {
+  let summary = "Return operation for reussir.func";
+  let description = [{
+    `reussir.return` terminates a `reussir.func` function body.
+  }];
+
+  let arguments = (ins Variadic<AnyType>:$operands);
+
+  let assemblyFormat = [{
+    attr-dict ($operands^ `:` type($operands))?
+  }];
+}
+
+def ReussirCallOp : ReussirOp<"call", [
+    CallOpInterface,
+    DeclareOpInterfaceMethods<SymbolUserOpInterface>
+]> {
+  let summary = "Call operation for reussir.func functions";
+  let description = [{
+    `reussir.call` calls a `reussir.func` function.
+  }];
+
+  let arguments = (ins FlatSymbolRefAttr:$callee,
+                       Variadic<AnyType>:$operands,
+                       OptionalAttr<DictArrayAttr>:$arg_attrs,
+                       OptionalAttr<DictArrayAttr>:$res_attrs);
+  let results = (outs Variadic<AnyType>);
+
+  let assemblyFormat = [{
+    $callee `(` $operands `)` attr-dict `:` functional-type($operands, results)
+  }];
+
+  let extraClassDeclaration = [{
+    mlir::FunctionType getCalleeType();
+
+    /// Get the argument operands to the called function.
+    operand_range getArgOperands() {
+      return {arg_operand_begin(), arg_operand_end()};
+    }
+
+    mlir::MutableOperandRange getArgOperandsMutable() {
+      return getOperandsMutable();
+    }
+
+    operand_iterator arg_operand_begin() { return operand_begin(); }
+    operand_iterator arg_operand_end() { return operand_end(); }
+
+    /// Return the callee of this operation.
+    mlir::CallInterfaceCallable getCallableForCallee() {
+      return (*this)->getAttrOfType<mlir::SymbolRefAttr>("callee");
+    }
+
+    /// Set the callee for this operation.
+    void setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
+      (*this)->setAttr("callee", mlir::cast<mlir::SymbolRefAttr>(callee));
+    }
   }];
 }
 

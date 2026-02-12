@@ -11,7 +11,7 @@
 
 module attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> : vector<2xi64>>>} {
   // Option-like API using record dispatch: unwrap or default
-  func.func @option_unwrap_or_default(%opt_ref : !reussir.ref<!option>, %default : i32) -> i32 {
+  reussir.func @option_unwrap_or_default(%opt_ref : !reussir.ref<!option>, %default : i32) -> i32 {
     %result = reussir.record.dispatch(%opt_ref : !reussir.ref<!option>) -> i32 {
       [0] -> {
         ^bb0(%some_ref : !reussir.ref<!option_some>):
@@ -24,11 +24,11 @@ module attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> :
           reussir.scf.yield %default : i32
       }
     }
-    func.return %result : i32
+    reussir.return %result : i32
   }
 
   // Option-like API using record dispatch: unwrap or compute default
-  func.func @option_unwrap_or_compute(%opt_ref : !reussir.ref<!option>) -> i32 {
+  reussir.func @option_unwrap_or_compute(%opt_ref : !reussir.ref<!option>) -> i32 {
     %result = reussir.record.dispatch(%opt_ref : !reussir.ref<!option>) -> i32 {
       [0] -> {
         ^bb0(%some_ref : !reussir.ref<!option_some>):
@@ -43,11 +43,11 @@ module attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> :
           reussir.scf.yield %doubled : i32
       }
     }
-    func.return %result : i32
+    reussir.return %result : i32
   }
 
   // Result-like API using record dispatch: unwrap ok or return error
-  func.func @result_unwrap_or_error(%result_ref : !reussir.ref<!result>) -> i32 {
+  reussir.func @result_unwrap_or_error(%result_ref : !reussir.ref<!result>) -> i32 {
     %result = reussir.record.dispatch(%result_ref : !reussir.ref<!result>) -> i32 {
       [0] -> {
         ^bb0(%ok_ref : !reussir.ref<!result_ok>):
@@ -63,11 +63,11 @@ module attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> :
           reussir.scf.yield %negated : i32
       }
     }
-    func.return %result : i32
+    reussir.return %result : i32
   }
 
   // Nullable option-like API: unwrap or default
-  func.func @nullable_unwrap_or_default(%nullable : !reussir.nullable<!reussir.rc<i32>>, %default : i32) -> i32 {
+  reussir.func @nullable_unwrap_or_default(%nullable : !reussir.nullable<!reussir.rc<i32>>, %default : i32) -> i32 {
     %result = reussir.nullable.dispatch(%nullable : !reussir.nullable<!reussir.rc<i32>>) -> i32 {
       nonnull -> {
         ^bb0(%nonnull_ptr : !reussir.rc<i32>):
@@ -80,11 +80,11 @@ module attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> :
           reussir.scf.yield %default : i32
       }
     }
-    func.return %result : i32
+    reussir.return %result : i32
   }
 
   // Nullable option-like API: unwrap or compute
-  func.func @nullable_unwrap_or_compute(%nullable : !reussir.nullable<!reussir.ref<i64>>) -> i64 {
+  reussir.func @nullable_unwrap_or_compute(%nullable : !reussir.nullable<!reussir.ref<i64>>) -> i64 {
     %result = reussir.nullable.dispatch(%nullable : !reussir.nullable<!reussir.ref<i64>>) -> i64 {
       nonnull -> {
         ^bb0(%nonnull_ptr : !reussir.ref<i64>):
@@ -98,11 +98,11 @@ module attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> :
           reussir.scf.yield %squared : i64
       }
     }
-    func.return %result : i64
+    reussir.return %result : i64
   }
 
   // Option-like API with side effects: map or execute default
-  func.func @option_map_or_execute(%opt_ref : !reussir.ref<!option>) -> i32 {
+  reussir.func @option_map_or_execute(%opt_ref : !reussir.ref<!option>) -> i32 {
     %res = reussir.record.dispatch(%opt_ref : !reussir.ref<!option>) -> i32 {
       [0] -> {
         ^bb0(%some_ref : !reussir.ref<!option_some>):
@@ -117,7 +117,7 @@ module attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> :
           reussir.scf.yield %default_action : i32
       }
     }
-    func.return %res : i32
+    reussir.return %res : i32
   }
 }
 

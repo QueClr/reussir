@@ -3,7 +3,7 @@
 // Test closure uniqify operation with closure passed in and passed out
 // No create operation is used - closure is provided as function argument
 module attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> : vector<2xi64>>>} {
-  func.func @test_closure_uniqify_with_input(
+  reussir.func @test_closure_uniqify_with_input(
     %input_closure : !reussir.rc<!reussir.closure<(i32) -> i32>>
   ) -> !reussir.rc<!reussir.closure<(i32) -> i32>> {
     // Test uniqify operation - should be rewritten to SCF if-else with rc.is_unique check

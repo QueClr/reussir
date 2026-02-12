@@ -2,7 +2,7 @@
 
 module {
   // CHECK-LABEL: @test_str_ops
-  func.func @test_str_ops(%str: !reussir.str<local>) -> i8 {
+  reussir.func @test_str_ops(%str: !reussir.str<local>) -> i8 {
     %idx = arith.constant 0 : index
     // CHECK: %[[LEN:.*]] = llvm.extractvalue %{{.*}}[1] : !llvm.struct<(ptr, i64)> 
     // CHECK: %[[COND:.*]] = llvm.icmp "ugt" %[[LEN]], %{{.*}} : i64

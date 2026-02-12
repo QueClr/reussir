@@ -17,7 +17,7 @@ fn mirror(t : Tree) -> Tree {
 
 // --- MLIR ownership checks ---
 // mirror(%0=t): consuming transformation with allocation
-// CHECK-MLIR-LABEL: func.func @"_RC6mirror"(%0 :
+// CHECK-MLIR-LABEL: reussir.func @"_RC6mirror"(%0 :
 // CHECK-MLIR:       reussir.rc.borrow (%0 :
 // CHECK-MLIR:       reussir.record.dispatch
 // Leaf(x): x is i32, dec scrutinee, build new Leaf
@@ -39,8 +39,8 @@ fn mirror(t : Tree) -> Tree {
 // CHECK-MLIR:       reussir.rc.inc
 // CHECK-MLIR:       reussir.rc.dec (%0 :
 // Recursive calls in swapped order: mirror(r) then mirror(l)
-// CHECK-MLIR:       func.call @"_RC6mirror"
-// CHECK-MLIR:       func.call @"_RC6mirror"
+// CHECK-MLIR:       reussir.call @"_RC6mirror"
+// CHECK-MLIR:       reussir.call @"_RC6mirror"
 // Build new Node from swapped results
 // CHECK-MLIR:       reussir.record.compound
 // CHECK-MLIR:       reussir.record.variant

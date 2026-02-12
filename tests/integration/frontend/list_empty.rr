@@ -58,7 +58,7 @@ pub fn empty2(list : List<i32>) -> bool {
 
 // --- MLIR ownership checks: both branches dec the list, no inc needed ---
 // empty1: match with wildcard
-// CHECK-MLIR-LABEL: func.func @"_RC6empty1"(%0 :
+// CHECK-MLIR-LABEL: reussir.func @"_RC6empty1"(%0 :
 // CHECK-MLIR:       reussir.rc.borrow (%0 :
 // CHECK-MLIR:       reussir.record.dispatch
 // Nil: dec scrutinee, yield true
@@ -72,7 +72,7 @@ pub fn empty2(list : List<i32>) -> bool {
 // CHECK-MLIR:       arith.constant 0 : i1
 
 // empty2: match with explicit Cons(..)
-// CHECK-MLIR-LABEL: func.func @"_RC6empty2"(%0 :
+// CHECK-MLIR-LABEL: reussir.func @"_RC6empty2"(%0 :
 // CHECK-MLIR:       reussir.record.dispatch
 // Nil: dec, yield true
 // CHECK-MLIR:       [0] ->

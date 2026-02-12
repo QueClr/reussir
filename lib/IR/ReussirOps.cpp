@@ -29,6 +29,7 @@
 #include <mlir/IR/Attributes.h>
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/BuiltinAttributes.h>
+#include <mlir/Interfaces/FunctionImplementation.h>
 #include <mlir/IR/OpImplementation.h>
 #include <mlir/IR/Operation.h>
 #include <mlir/IR/SymbolTable.h>
@@ -172,7 +173,7 @@ mlir::LogicalResult
 ReussirRcDecOp::verifySymbolUses(mlir::SymbolTableCollection &symbolTable) {
   RcType rcType = getRcPtr().getType();
   if (auto eleTy = mlir::dyn_cast<FFIObjectType>(rcType.getElementType())) {
-    auto funcOp = symbolTable.lookupNearestSymbolFrom<mlir::func::FuncOp>(
+    auto funcOp = symbolTable.lookupNearestSymbolFrom<ReussirFuncOp>(
         getOperation(), eleTy.getCleanupHook());
     if (!funcOp)
       return emitOpError("cleanup hook not found: ") << eleTy.getCleanupHook();
@@ -765,7 +766,7 @@ void ReussirRecordDispatchOp::getSuccessorRegions(
 mlir::LogicalResult ReussirRegionVTableOp::verifySymbolUses(
     mlir::SymbolTableCollection &symbolTable) {
   if (getDropAttr()) {
-    auto funcOp = symbolTable.lookupNearestSymbolFrom<mlir::func::FuncOp>(
+    auto funcOp = symbolTable.lookupNearestSymbolFrom<ReussirFuncOp>(
         getOperation(), getDropAttr());
     if (!funcOp)
       return emitOpError("drop function not found: ") << getDropAttr();
@@ -1339,17 +1340,17 @@ RcBoxType ReussirClosureCreateOp::getRcClosureBoxType() {
 mlir::LogicalResult ReussirClosureVtableOp::verifySymbolUses(
     mlir::SymbolTableCollection &symbolTable) {
   // NYI for body
-  auto funcOp = symbolTable.lookupNearestSymbolFrom<mlir::func::FuncOp>(
+  auto funcOp = symbolTable.lookupNearestSymbolFrom<ReussirFuncOp>(
       getOperation(), getFuncAttr());
   if (!funcOp)
     return emitOpError("function not found: ") << getFuncAttr();
 
-  auto dropOp = symbolTable.lookupNearestSymbolFrom<mlir::func::FuncOp>(
+  auto dropOp = symbolTable.lookupNearestSymbolFrom<ReussirFuncOp>(
       getOperation(), getDropAttr());
   if (!dropOp)
     return emitOpError("drop function not found: ") << getDropAttr();
 
-  auto cloneOp = symbolTable.lookupNearestSymbolFrom<mlir::func::FuncOp>(
+  auto cloneOp = symbolTable.lookupNearestSymbolFrom<ReussirFuncOp>(
       getOperation(), getCloneAttr());
   if (!cloneOp)
     return emitOpError("clone function not found: ") << getCloneAttr();
@@ -1759,22 +1760,24 @@ mlir::LogicalResult emitOwnershipAcquisition(mlir::Value value,
 //===----------------------------------------------------------------------===//
 // createDtorIfNotExists
 //===----------------------------------------------------------------------===//
-mlir::func::FuncOp createDtorIfNotExists(mlir::ModuleOp moduleOp,
-                                         RecordType type,
-                                         mlir::OpBuilder &builder) {
+ReussirFuncOp createDtorIfNotExists(mlir::ModuleOp moduleOp,
+                                    RecordType type,
+                                    mlir::OpBuilder &builder) {
   mlir::SymbolTable symTable(moduleOp);
   auto dtorName = type.getDtorName();
   if (!dtorName)
     llvm::report_fatal_error("only named record types have destructors");
   std::string funcName = dtorName.getValue().str();
-  if (auto funcOp = symTable.lookup<mlir::func::FuncOp>(funcName))
+  if (auto funcOp = symTable.lookup<ReussirFuncOp>(funcName))
     return funcOp;
   mlir::OpBuilder::InsertionGuard guard(builder);
   builder.setInsertionPointToStart(moduleOp.getBody());
   RefType refType = builder.getType<RefType>(type);
-  auto dtor = builder.create<mlir::func::FuncOp>(
+  auto dtor = builder.create<ReussirFuncOp>(
       builder.getUnknownLoc(), funcName,
-      builder.getFunctionType({refType}, {}));
+      builder.getFunctionType({refType}, {}),
+      /*sym_visibility=*/nullptr, /*arg_attrs=*/nullptr,
+      /*res_attrs=*/nullptr);
   dtor.setPrivate();
   dtor->setAttr("llvm.linkage", builder.getAttr<mlir::LLVM::LinkageAttr>(
                                     mlir::LLVM::linkage::Linkage::LinkonceODR));
@@ -1782,14 +1785,14 @@ mlir::func::FuncOp createDtorIfNotExists(mlir::ModuleOp moduleOp,
   builder.setInsertionPointToStart(entryBlock);
   auto ref = entryBlock->getArgument(0);
   builder.create<ReussirRefDropOp>(builder.getUnknownLoc(), ref, true, nullptr);
-  builder.create<mlir::func::ReturnOp>(builder.getUnknownLoc());
+  builder.create<ReussirReturnOp>(builder.getUnknownLoc(), mlir::ValueRange{});
   return dtor;
 }
 
 //===----------------------------------------------------------------------===//
 // emitOwnershipAcquisitionFuncIfNotExists
 //===----------------------------------------------------------------------===//
-mlir::func::FuncOp emitOwnershipAcquisitionFuncIfNotExists(
+ReussirFuncOp emitOwnershipAcquisitionFuncIfNotExists(
     mlir::ModuleOp moduleOp, RecordType type, mlir::OpBuilder &builder) {
   mlir::SymbolTable symTable(moduleOp);
   auto acquireName = type.getAcquireName();
@@ -1798,7 +1801,7 @@ mlir::func::FuncOp emitOwnershipAcquisitionFuncIfNotExists(
         "only named record types have ownership acquisition functions");
   std::string funcName = acquireName.getValue().str();
 
-  if (auto funcOp = symTable.lookup<mlir::func::FuncOp>(funcName))
+  if (auto funcOp = symTable.lookup<ReussirFuncOp>(funcName))
     return funcOp;
 
   mlir::OpBuilder::InsertionGuard guard(builder);
@@ -1807,9 +1810,11 @@ mlir::func::FuncOp emitOwnershipAcquisitionFuncIfNotExists(
   // Construct RefType from RecordType
   RefType refType = builder.getType<RefType>(type);
 
-  auto funcOp = builder.create<mlir::func::FuncOp>(
+  auto funcOp = builder.create<ReussirFuncOp>(
       builder.getUnknownLoc(), funcName,
-      builder.getFunctionType({refType}, {}));
+      builder.getFunctionType({refType}, {}),
+      /*sym_visibility=*/nullptr, /*arg_attrs=*/nullptr,
+      /*res_attrs=*/nullptr);
   funcOp.setPrivate();
   funcOp->setAttr("llvm.linkage",
                   builder.getAttr<mlir::LLVM::LinkageAttr>(
@@ -1824,7 +1829,7 @@ mlir::func::FuncOp emitOwnershipAcquisitionFuncIfNotExists(
     llvm::report_fatal_error("failed to emit ownership acquisition");
   }
 
-  builder.create<mlir::func::ReturnOp>(builder.getUnknownLoc());
+  builder.create<ReussirReturnOp>(builder.getUnknownLoc(), mlir::ValueRange{});
   return funcOp;
 }
 
@@ -1879,6 +1884,112 @@ mlir::LogicalResult ReussirRecordExtractOp::verify() {
       memberType, recordType.getMemberIsField()[indexVal], Capability::value);
   if (projectedType != getField().getType())
     return emitOpError("projected type mismatch");
+  return mlir::success();
+}
+
+//===----------------------------------------------------------------------===//
+// ReussirFuncOp
+//===----------------------------------------------------------------------===//
+
+void ReussirFuncOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
+                          llvm::StringRef name, mlir::FunctionType type,
+                          llvm::ArrayRef<mlir::NamedAttribute> attrs,
+                          llvm::ArrayRef<mlir::DictionaryAttr> argAttrs) {
+  state.addAttribute(mlir::SymbolTable::getSymbolAttrName(),
+                     builder.getStringAttr(name));
+  state.addAttribute(getFunctionTypeAttrName(state.name),
+                     mlir::TypeAttr::get(type));
+  state.attributes.append(attrs.begin(), attrs.end());
+  state.addRegion();
+
+  if (argAttrs.empty())
+    return;
+  assert(type.getNumInputs() == argAttrs.size());
+  mlir::call_interface_impl::addArgAndResultAttrs(
+      builder, state, argAttrs, /*resultAttrs=*/{},
+      getArgAttrsAttrName(state.name), getResAttrsAttrName(state.name));
+}
+
+mlir::ParseResult ReussirFuncOp::parse(mlir::OpAsmParser &parser,
+                                       mlir::OperationState &result) {
+  auto buildFuncType = [](mlir::Builder &builder,
+                          llvm::ArrayRef<mlir::Type> argTypes,
+                          llvm::ArrayRef<mlir::Type> results,
+                          mlir::function_interface_impl::VariadicFlag,
+                          std::string &) {
+    return builder.getFunctionType(argTypes, results);
+  };
+  return mlir::function_interface_impl::parseFunctionOp(
+      parser, result, /*allowVariadic=*/false,
+      getFunctionTypeAttrName(result.name), buildFuncType,
+      getArgAttrsAttrName(result.name), getResAttrsAttrName(result.name));
+}
+
+void ReussirFuncOp::print(mlir::OpAsmPrinter &p) {
+  mlir::function_interface_impl::printFunctionOp(
+      p, *this, /*isVariadic=*/false, getFunctionTypeAttrName(),
+      getArgAttrsAttrName(), getResAttrsAttrName());
+}
+
+mlir::LogicalResult ReussirFuncOp::verify() {
+  // If the function is external, there is nothing to verify.
+  if (isExternal())
+    return mlir::success();
+
+  // Verify that the argument list of the function and the arg list of the
+  // entry block line up.
+  auto fnInputTypes = getFunctionType().getInputs();
+  mlir::Block &entryBlock = front();
+  if (fnInputTypes.size() != entryBlock.getNumArguments())
+    return emitOpError("entry block must have same number of arguments as the "
+                       "function has inputs");
+  for (unsigned i = 0; i < fnInputTypes.size(); ++i)
+    if (fnInputTypes[i] != entryBlock.getArgument(i).getType())
+      return emitOpError("type of entry block argument #")
+             << i << " must match the type of the corresponding argument: "
+             << fnInputTypes[i] << " vs " << entryBlock.getArgument(i).getType();
+  return mlir::success();
+}
+
+//===----------------------------------------------------------------------===//
+// ReussirCallOp
+//===----------------------------------------------------------------------===//
+
+mlir::FunctionType ReussirCallOp::getCalleeType() {
+  return mlir::FunctionType::get(getContext(), getOperandTypes(),
+                                 getResultTypes());
+}
+
+mlir::LogicalResult
+ReussirCallOp::verifySymbolUses(mlir::SymbolTableCollection &symbolTable) {
+  // Check that the callee attribute was specified.
+  auto fnAttr = (*this)->getAttrOfType<mlir::FlatSymbolRefAttr>("callee");
+  if (!fnAttr)
+    return emitOpError("requires a 'callee' symbol reference attribute");
+
+  auto fn = symbolTable.lookupNearestSymbolFrom<ReussirFuncOp>(*this, fnAttr);
+  if (!fn)
+    return emitOpError() << "'" << fnAttr.getValue()
+                         << "' does not reference a valid function";
+
+  // Verify that the operand and result types match the callee.
+  auto fnType = fn.getFunctionType();
+  if (fnType.getNumInputs() != getNumOperands())
+    return emitOpError("incorrect number of operands for callee");
+
+  for (unsigned i = 0; i < fnType.getNumInputs(); ++i)
+    if (getOperand(i).getType() != fnType.getInput(i))
+      return emitOpError("operand type mismatch: expected operand type ")
+             << fnType.getInput(i) << ", but provided "
+             << getOperand(i).getType() << " for operand number " << i;
+
+  if (fnType.getNumResults() != getNumResults())
+    return emitOpError("incorrect number of results for callee");
+
+  for (unsigned i = 0; i < fnType.getNumResults(); ++i)
+    if (getResult(i).getType() != fnType.getResult(i))
+      return emitOpError("result type mismatch at index ") << i;
+
   return mlir::success();
 }
 

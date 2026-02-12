@@ -13,6 +13,7 @@ module;
 
 // Include Reussir headers
 #include "Reussir/IR/ReussirDialect.h"
+#include "Reussir/IR/ReussirOps.h"
 
 export module reussir.test;
 
@@ -51,10 +52,10 @@ protected:
     requires std::is_invocable_v<F, mlir::ModuleOp, Type>
   {
     auto typeString = std::format(
-        "module attributes {{ {} }} {{ func.func private @test() -> {} }}",
+        "module attributes {{ {} }} {{ reussir.func private @test() -> {} }}",
         attributes, source);
     withModule(typeString, [&](mlir::ModuleOp module) {
-      auto op = llvm::cast<mlir::func::FuncOp>(module.getBody()->front());
+      auto op = llvm::cast<reussir::ReussirFuncOp>(module.getBody()->front());
       auto type = op.getFunctionType().getResult(0);
       func(module, llvm::cast<Type>(type));
     });

@@ -3,7 +3,7 @@
 // Test successful closure eval operations
 module attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> : vector<2xi64>>>} {
   // Test basic closure eval with return value
-  func.func private @test_closure_eval_basic() -> i32 {
+  reussir.func private @test_closure_eval_basic() -> i32 {
     %token = reussir.token.alloc : !reussir.token<align: 8, size: 24>
     %closure = reussir.closure.create -> !reussir.rc<!reussir.closure<() -> i32>> {
       token(%token : !reussir.token<align: 8, size: 24>)
@@ -18,7 +18,7 @@ module attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> :
   }
 
   // Test closure eval with void return type
-  func.func private @test_closure_eval_void() {
+  reussir.func private @test_closure_eval_void() {
     %token = reussir.token.alloc : !reussir.token<align: 8, size: 24>
     %closure = reussir.closure.create -> !reussir.rc<!reussir.closure<()>> {
       token(%token : !reussir.token<align: 8, size: 24>)
@@ -32,7 +32,7 @@ module attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> :
   }
 
   // Test closure eval with complex return type
-  func.func private @test_closure_eval_complex() -> i64 {
+  reussir.func private @test_closure_eval_complex() -> i64 {
     %token = reussir.token.alloc : !reussir.token<align: 8, size: 24>
     %closure = reussir.closure.create -> !reussir.rc<!reussir.closure<() -> i64>> {
       token(%token : !reussir.token<align: 8, size: 24>)
@@ -49,7 +49,7 @@ module attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> :
   }
 
   // Test closure eval after apply operations
-  func.func private @test_closure_eval_after_apply() -> i32 {
+  reussir.func private @test_closure_eval_after_apply() -> i32 {
     %token = reussir.token.alloc : !reussir.token<align: 8, size: 40>
     %closure = reussir.closure.create -> !reussir.rc<!reussir.closure<(i32, i32) -> i32>> {
       token(%token : !reussir.token<align: 8, size: 40>)

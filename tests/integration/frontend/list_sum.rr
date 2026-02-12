@@ -16,7 +16,7 @@ fn sum(list : List<i32>) -> i32 {
 
 // --- MLIR ownership checks ---
 // sum(%0=list): consuming traversal returning primitive
-// CHECK-MLIR-LABEL: func.func @"_RC3sum"(%0 :
+// CHECK-MLIR-LABEL: reussir.func @"_RC3sum"(%0 :
 // CHECK-MLIR:       reussir.rc.borrow (%0 :
 // CHECK-MLIR:       reussir.record.dispatch
 // Nil: dec list, yield 0
@@ -32,4 +32,4 @@ fn sum(list : List<i32>) -> i32 {
 // CHECK-MLIR:       reussir.ref.project
 // CHECK-MLIR:       reussir.ref.load
 // CHECK-MLIR:       reussir.rc.dec (%0 :
-// CHECK-MLIR:       func.call @"_RC3sum"
+// CHECK-MLIR:       reussir.call @"_RC3sum"

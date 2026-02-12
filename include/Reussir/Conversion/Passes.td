@@ -32,7 +32,6 @@ def ReussirBasicOpsLoweringPass
                            "::mlir::scf::SCFDialect",
                            "::mlir::math::MathDialect",
                            "::mlir::LLVM::LLVMDialect",
-                           "::mlir::func::FuncDialect",
                            "::mlir::ub::UBDialect",
                            "::reussir::ReussirDialect"];
 }
@@ -51,7 +50,6 @@ def ReussirSCFOpsLoweringPass
                            "::reussir::ReussirDialect",
                            "::mlir::math::MathDialect",
                            "::mlir::scf::SCFDialect",
-                           "::mlir::func::FuncDialect",
                            "::mlir::ub::UBDialect"];
 }
 
@@ -131,7 +129,7 @@ def ReussirRcDecrementExpansionPass
 // InferVariantTag
 //===----------------------------------------------------------------------===//
 def ReussirInferVariantTagPass
-    : Pass<"reussir-infer-variant-tag", "::mlir::func::FuncOp"> {
+    : Pass<"reussir-infer-variant-tag", "::reussir::ReussirFuncOp"> {
   let summary = "infer variant tags for drop operations";
   let description = [{
     `reussir-infer-variant-tag` infers variant tags for drop operations.
@@ -144,7 +142,7 @@ def ReussirInferVariantTagPass
 // IncDecCancellation
 //===----------------------------------------------------------------------===//
 def ReussirIncDecCancellationPass
-    : Pass<"reussir-inc-dec-cancellation", "::mlir::func::FuncOp"> {
+    : Pass<"reussir-inc-dec-cancellation", "::reussir::ReussirFuncOp"> {
   let summary = "cancel out adjacent increment and decrement operations";
   let description = [{
     `reussir-inc-dec-cancellation` cancels out adjacent increment and decrement
@@ -158,7 +156,7 @@ def ReussirIncDecCancellationPass
 // TokenInstantiation
 //===----------------------------------------------------------------------===//
 def ReussirTokenInstantiationPass
-    : Pass<"reussir-token-instantiation", "::mlir::func::FuncOp"> {
+    : Pass<"reussir-token-instantiation", "::reussir::ReussirFuncOp"> {
   let summary = "insert token instantiations for TokenAcceptor operations";
   let description = [{
     `reussir-token-instantiation` inserts token allocation operations for operations
@@ -182,7 +180,6 @@ def ReussirClosureOutliningPass
   }];
 
   let dependentDialects = ["::reussir::ReussirDialect",
-                           "::mlir::func::FuncDialect",
                            "::mlir::LLVM::LLVMDialect"
                           ];
 }
@@ -201,8 +198,7 @@ def ReussirCompilePolymorphicFFIPass
     Option<"optimized", "optimized", "bool", /*default=*/"false",
         "enable optimizations when compiling FFI templates">,
   ];
-  let dependentDialects = ["::reussir::ReussirDialect", 
-                           "::mlir::func::FuncDialect", 
+  let dependentDialects = ["::reussir::ReussirDialect",
                            "::mlir::scf::SCFDialect"];
 }
 
@@ -210,7 +206,7 @@ def ReussirCompilePolymorphicFFIPass
 // TokenReuse
 //===----------------------------------------------------------------------===//
 def ReussirTokenReusePass
-    : Pass<"reussir-token-reuse", "::mlir::func::FuncOp"> {
+    : Pass<"reussir-token-reuse", "::reussir::ReussirFuncOp"> {
   let summary = "reuse tokens for operations";
   let description = [{
     `reussir-token-reuse` reuses tokens for operations.

@@ -43,7 +43,7 @@ public:
   ClosureNameUniquifier() = default;
   std::string uniquify(ReussirClosureCreateOp op) {
     llvm::SmallString<128> buffer;
-    auto function = op->getParentOfType<mlir::func::FuncOp>();
+    auto function = op->getParentOfType<ReussirFuncOp>();
     auto moduleOp = function->getParentOfType<mlir::ModuleOp>();
     buffer.append(moduleOp.getName() ? *moduleOp.getName() : "<anonymous>");
     buffer.append(function.getName());
@@ -70,17 +70,17 @@ struct ClosureOutliningPass
   /// - Arguments matching the closure's input types
   /// - Return type matching the closure's output type (if any)
   /// - Body cloned from the closure's region with yield replaced by return
-  mlir::func::FuncOp createFunctionAndInlineRegion(ReussirClosureCreateOp op,
+  ReussirFuncOp createFunctionAndInlineRegion(ReussirClosureCreateOp op,
                                                    llvm::Twine name,
                                                    mlir::IRRewriter &rewriter);
 
   /// Create the closure drop function.
-  mlir::func::FuncOp createClosureDropFunction(ReussirClosureCreateOp op,
+  ReussirFuncOp createClosureDropFunction(ReussirClosureCreateOp op,
                                                llvm::Twine name,
                                                mlir::IRRewriter &rewriter);
 
   /// Create the closure clone function
-  mlir::func::FuncOp createClosureCloneFunction(ReussirClosureCreateOp op,
+  ReussirFuncOp createClosureCloneFunction(ReussirClosureCreateOp op,
                                                 llvm::Twine name,
                                                 mlir::IRRewriter &rewriter);
 
@@ -100,13 +100,13 @@ void ClosureOutliningPass::runOnOperation() {
     auto name = nameUniquifier.uniquify(op);
     // First, create a function, inline the region into the function and
     // change the yield op to return op during the translation.
-    mlir::func::FuncOp evaluateFunction =
+    ReussirFuncOp evaluateFunction =
         createFunctionAndInlineRegion(op, name, rewriter);
 
     // Second, create closure's clone and drop functions
-    mlir::func::FuncOp cloneFunction =
+    ReussirFuncOp cloneFunction =
         createClosureCloneFunction(op, name, rewriter);
-    mlir::func::FuncOp dropFunction =
+    ReussirFuncOp dropFunction =
         createClosureDropFunction(op, name, rewriter);
 
     // Third, create vtable operation
@@ -134,7 +134,7 @@ void ClosureOutliningPass::runOnOperation() {
   }
 }
 
-mlir::func::FuncOp ClosureOutliningPass::createFunctionAndInlineRegion(
+ReussirFuncOp ClosureOutliningPass::createFunctionAndInlineRegion(
     ReussirClosureCreateOp op, llvm::Twine name, mlir::IRRewriter &rewriter) {
   mlir::OpBuilder::InsertionGuard guard(rewriter);
   std::string invokeName = (name + "::evaluate").str();
@@ -156,7 +156,10 @@ mlir::func::FuncOp ClosureOutliningPass::createFunctionAndInlineRegion(
 
   // Create the function
   auto funcOp =
-      rewriter.create<mlir::func::FuncOp>(op.getLoc(), invokeName, funcType);
+      rewriter.create<ReussirFuncOp>(op.getLoc(), invokeName, funcType,
+                                       /*sym_visibility=*/nullptr,
+                                       /*arg_attrs=*/nullptr,
+                                       /*res_attrs=*/nullptr);
   funcOp.setPrivate();
   funcOp->setAttr("llvm.linkage",
                   mlir::LLVM::LinkageAttr::get(rewriter.getContext(),
@@ -239,9 +242,9 @@ mlir::func::FuncOp ClosureOutliningPass::createFunctionAndInlineRegion(
     // After the if, create the return
     rewriter.setInsertionPointAfter(ifOp);
     if (yieldOp.getValue())
-      rewriter.create<mlir::func::ReturnOp>(yieldLoc, yieldOp.getValue());
+      rewriter.create<ReussirReturnOp>(yieldLoc, yieldOp.getValue());
     else
-      rewriter.create<mlir::func::ReturnOp>(yieldLoc);
+      rewriter.create<ReussirReturnOp>(yieldLoc, mlir::ValueRange{});
 
     rewriter.eraseOp(yieldOp);
   });
@@ -249,7 +252,7 @@ mlir::func::FuncOp ClosureOutliningPass::createFunctionAndInlineRegion(
   return funcOp;
 }
 
-mlir::func::FuncOp ClosureOutliningPass::createClosureDropFunction(
+ReussirFuncOp ClosureOutliningPass::createClosureDropFunction(
     ReussirClosureCreateOp op, llvm::Twine name, mlir::IRRewriter &rewriter) {
   mlir::OpBuilder::InsertionGuard guard(rewriter);
   std::string dropName = (name + "::drop").str();
@@ -263,7 +266,10 @@ mlir::func::FuncOp ClosureOutliningPass::createClosureDropFunction(
   mlir::FunctionType funcType = rewriter.getFunctionType(
       llvm::ArrayRef<mlir::Type>{specializedRcType}, {});
   auto funcOp =
-      rewriter.create<mlir::func::FuncOp>(op.getLoc(), dropName, funcType);
+      rewriter.create<ReussirFuncOp>(op.getLoc(), dropName, funcType,
+                                       /*sym_visibility=*/nullptr,
+                                       /*arg_attrs=*/nullptr,
+                                       /*res_attrs=*/nullptr);
   funcOp.setPrivate();
   funcOp->setAttr("llvm.linkage",
                   mlir::LLVM::LinkageAttr::get(rewriter.getContext(),
@@ -349,12 +355,12 @@ mlir::func::FuncOp ClosureOutliningPass::createClosureDropFunction(
 
   // Return from the function (after the if)
   rewriter.setInsertionPointAfter(ifOp);
-  rewriter.create<mlir::func::ReturnOp>(loc);
+  rewriter.create<ReussirReturnOp>(loc, mlir::ValueRange{});
 
   return funcOp;
 }
 
-mlir::func::FuncOp ClosureOutliningPass::createClosureCloneFunction(
+ReussirFuncOp ClosureOutliningPass::createClosureCloneFunction(
     ReussirClosureCreateOp op, llvm::Twine name, mlir::IRRewriter &rewriter) {
   mlir::OpBuilder::InsertionGuard guard(rewriter);
   std::string cloneName = (name + "::clone").str();
@@ -369,7 +375,10 @@ mlir::func::FuncOp ClosureOutliningPass::createClosureCloneFunction(
       rewriter.getFunctionType(llvm::ArrayRef<mlir::Type>{specializedRcType},
                                llvm::ArrayRef<mlir::Type>{specializedRcType});
   auto funcOp =
-      rewriter.create<mlir::func::FuncOp>(op.getLoc(), cloneName, funcType);
+      rewriter.create<ReussirFuncOp>(op.getLoc(), cloneName, funcType,
+                                       /*sym_visibility=*/nullptr,
+                                       /*arg_attrs=*/nullptr,
+                                       /*res_attrs=*/nullptr);
   funcOp.setPrivate();
   funcOp->setAttr("llvm.linkage",
                   mlir::LLVM::LinkageAttr::get(rewriter.getContext(),
@@ -454,7 +463,7 @@ mlir::func::FuncOp ClosureOutliningPass::createClosureCloneFunction(
   }
 
   // Return the destination Rc pointer
-  rewriter.create<mlir::func::ReturnOp>(loc, dstRc);
+  rewriter.create<ReussirReturnOp>(loc, dstRc);
 
   return funcOp;
 }

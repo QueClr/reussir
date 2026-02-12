@@ -21,6 +21,7 @@
 #include <mlir/Pass/Pass.h>
 #include <mlir/Transforms/DialectConversion.h>
 
+#include "Reussir/IR/ReussirOps.h"
 #include "Reussir/IR/ReussirTypes.h"
 
 namespace reussir {
@@ -62,7 +63,7 @@ namespace reussir {
 // attribute to the drop operation.
 //===----------------------------------------------------------------------===//
 
-void runTagInference(mlir::func::FuncOp func);
+void runTagInference(ReussirFuncOp func);
 
 } // namespace reussir
 

@@ -1,7 +1,7 @@
 // RUN: %reussir-opt %s -verify-diagnostics
 
 module {
-  func.func @test_missing_nonnull_arg(%nullable : !reussir.nullable<!reussir.rc<i64>>) -> i32 {
+  reussir.func @test_missing_nonnull_arg(%nullable : !reussir.nullable<!reussir.rc<i64>>) -> i32 {
     // expected-error @+1 {{'reussir.nullable.dispatch' op nonnull region must have exactly one argument}}
     %result = reussir.nullable.dispatch(%nullable : !reussir.nullable<!reussir.rc<i64>>) -> i32 {
       nonnull -> {
@@ -15,6 +15,6 @@ module {
           reussir.scf.yield %c0 : i32
       }
     }
-    func.return %result : i32
+    reussir.return %result : i32
   }
 }

@@ -2,7 +2,7 @@
 
 // Test failure: closure eval with wrong result type
 module attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> : vector<2xi64>>>} {
-  func.func private @test_closure_eval_wrong_result_type() -> i64 {
+  reussir.func private @test_closure_eval_wrong_result_type() -> i64 {
     %token = reussir.token.alloc : !reussir.token<align: 8, size: 32>
     %closure = reussir.closure.create -> !reussir.rc<!reussir.closure<() -> i32>> {
       token(%token : !reussir.token<align: 8, size: 32>)

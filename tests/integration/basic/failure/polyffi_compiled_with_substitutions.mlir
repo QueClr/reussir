@@ -3,10 +3,10 @@
 // Test that substitutions cannot be specified when compiledModule is used
 
 module @test {
-  func.func @polyffi_compiled_with_substitutions() {
+  reussir.func @polyffi_compiled_with_substitutions() {
     // expected-error @+1 {{substitutions cannot be specified when compiledModule is used}}
     reussir.polyffi substitutions({key = i64}) {compiledModule = dense_resource<blob1> : tensor<24xi8>}
-    func.return
+    reussir.return
   }
 }
 

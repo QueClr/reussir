@@ -53,15 +53,15 @@ fn fibonacci_u64(n : u64) -> u64 {
 // --- MLIR ownership checks ---
 
 // matmul: both RC matrix params are dec'd before creating the result
-// CHECK-MLIR-LABEL: func.func @"_RIC6matmulyE"(%0 :
+// CHECK-MLIR-LABEL: reussir.func @"_RIC6matmulyE"(%0 :
 // CHECK-MLIR:       reussir.rc.dec (%0 :
 // CHECK-MLIR-NEXT:  reussir.rc.dec (%1 :
 // CHECK-MLIR:       reussir.record.compound
 // CHECK-MLIR:       reussir.rc.create
-// CHECK-MLIR:       func.return
+// CHECK-MLIR:       reussir.return
 
 // fibonacci_logarithmic_impl: n==0 branch decs both a and b; else branches inc b
-// CHECK-MLIR-LABEL: func.func @"_RIC26fibonacci_logarithmic_implyE"(%0 : i64, %1 :
+// CHECK-MLIR-LABEL: reussir.func @"_RIC26fibonacci_logarithmic_implyE"(%0 : i64, %1 :
 // n==0 true branch: borrow a, load field, dec both b and a
 // CHECK-MLIR:       scf.if
 // CHECK-MLIR:       reussir.rc.dec (%2 :
@@ -74,19 +74,19 @@ fn fibonacci_u64(n : u64) -> u64 {
 // CHECK-MLIR:       } else {
 // CHECK-MLIR:       scf.if
 // CHECK-MLIR:       reussir.rc.inc (%2 :
-// CHECK-MLIR:       func.call @"_RIC6matmulyE"(%1, %2)
+// CHECK-MLIR:       reussir.call @"_RIC6matmulyE"(%1, %2)
 // CHECK-MLIR:       reussir.rc.inc (%2 :
-// CHECK-MLIR:       func.call @"_RIC6matmulyE"(%2, %2)
-// CHECK-MLIR:       func.call @"_RIC26fibonacci_logarithmic_implyE"
+// CHECK-MLIR:       reussir.call @"_RIC6matmulyE"(%2, %2)
+// CHECK-MLIR:       reussir.call @"_RIC26fibonacci_logarithmic_implyE"
 // CHECK-MLIR:       scf.yield
 // n%2==0 branch: inc b, matmul(b,b), pass a directly to recursive call
 // CHECK-MLIR:       } else {
 // CHECK-MLIR:       reussir.rc.inc (%2 :
-// CHECK-MLIR:       func.call @"_RIC6matmulyE"(%2, %2)
-// CHECK-MLIR:       func.call @"_RIC26fibonacci_logarithmic_implyE"({{%[0-9]+}}, %1, {{%[0-9]+}})
+// CHECK-MLIR:       reussir.call @"_RIC6matmulyE"(%2, %2)
+// CHECK-MLIR:       reussir.call @"_RIC26fibonacci_logarithmic_implyE"({{%[0-9]+}}, %1, {{%[0-9]+}})
 
 // fibonacci_u64: no RC ops, just create matrices and call impl
-// CHECK-MLIR-LABEL: func.func @"_RC13fibonacci_u64"
+// CHECK-MLIR-LABEL: reussir.func @"_RC13fibonacci_u64"
 // CHECK-MLIR-NOT:   reussir.rc.inc
 // CHECK-MLIR-NOT:   reussir.rc.dec
-// CHECK-MLIR:       func.return
+// CHECK-MLIR:       reussir.return

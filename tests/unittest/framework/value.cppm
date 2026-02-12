@@ -15,7 +15,7 @@ export class ReussirValueTransformTest : public ReussirTest {
 protected:
   template <typename F>
   void testValueAcquisition(std::string_view argType, F &&func)
-    requires std::is_invocable_v<F, mlir::func::FuncOp>
+    requires std::is_invocable_v<F, reussir::ReussirFuncOp>
   {
     constexpr llvm::StringRef moduleTemplate = R"(
       module attributes {{ dlti.dl_spec = #dlti.dl_spec<
@@ -26,8 +26,8 @@ protected:
         #dlti.dl_entry<i16, dense<16> : vector<2xi64>>>
       }}
       {{
-         func.func private @test(%value: {}) {{
-              func.return
+         reussir.func private @test(%value: {}) {{
+              reussir.return
          }}
       }}
     )";
@@ -35,7 +35,7 @@ protected:
                [func = std::forward<F>(func)](mlir::ModuleOp module) {
                  // std::forward<F>(func)(module.get());
                  auto funcOp =
-                     llvm::cast<mlir::func::FuncOp>(module.getBody()->front());
+                     llvm::cast<reussir::ReussirFuncOp>(module.getBody()->front());
                  mlir::OpBuilder builder(funcOp.getBody());
                  auto arg = funcOp.getBody().getArgument(0);
                  auto res =

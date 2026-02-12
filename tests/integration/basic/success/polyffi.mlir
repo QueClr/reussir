@@ -2,21 +2,21 @@
 
 module @test {
   // Test with moduleTexture and substitutions
-  func.func @polyffi_texture_with_substitutions() {
+  reussir.func @polyffi_texture_with_substitutions() {
     reussir.polyffi texture("module content") substitutions({key = i64})
-    func.return
+    reussir.return
   }
 
   // Test with moduleTexture only
-  func.func @polyffi_texture_only() {
+  reussir.func @polyffi_texture_only() {
     reussir.polyffi texture("module content")
-    func.return
+    reussir.return
   }
 
   // Test with compiledModule only
-  func.func @polyffi_compiled_only() {
+  reussir.func @polyffi_compiled_only() {
     reussir.polyffi compiled(dense_resource<blob1> : tensor<24xi8>)
-    func.return
+    reussir.return
   }
 }
 

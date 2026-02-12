@@ -331,7 +331,7 @@ std::string emitDecisionFunction(mlir::ModuleOp module,
                                  mlir::OpBuilder &builder,
                                  mlir::ArrayAttr patterns) {
   std::string funcName = decisionFunctionName(patterns);
-  if (module.lookupSymbol<mlir::func::FuncOp>(funcName)) {
+  if (module.lookupSymbol<ReussirFuncOp>(funcName)) {
     return funcName;
   }
 
@@ -346,7 +346,10 @@ std::string emitDecisionFunction(mlir::ModuleOp module,
   auto funcType = builder.getFunctionType({strType}, {indexType, i1Type});
 
   auto func =
-      builder.create<mlir::func::FuncOp>(module.getLoc(), funcName, funcType);
+      builder.create<ReussirFuncOp>(module.getLoc(), funcName, funcType,
+                                      /*sym_visibility=*/nullptr,
+                                      /*arg_attrs=*/nullptr,
+                                      /*res_attrs=*/nullptr);
   func.setVisibility(mlir::SymbolTable::Visibility::Private);
   func->setAttr("llvm.linkage",
                 mlir::LLVM::LinkageAttr::get(builder.getContext(),
@@ -363,8 +366,8 @@ std::string emitDecisionFunction(mlir::ModuleOp module,
   auto res = buildDecisionTree(module.getLoc(), builder, indexType, i1Type,
                                entry->getArgument(0), patternInfos);
 
-  builder.create<mlir::func::ReturnOp>(module.getLoc(),
-                                       mlir::ValueRange{res.first, res.second});
+  builder.create<ReussirReturnOp>(module.getLoc(),
+                                  mlir::ValueRange{res.first, res.second});
 
   return funcName;
 }
@@ -661,9 +664,11 @@ struct ReussirStrSelectOpRewritePattern
                   mlir::PatternRewriter &rewriter) const override {
     auto module = op->getParentOfType<mlir::ModuleOp>();
     auto funcName = emitDecisionFunction(module, rewriter, op.getPatterns());
-    auto func = module.lookupSymbol<mlir::func::FuncOp>(funcName);
-    auto call = rewriter.create<mlir::func::CallOp>(
-        op.getLoc(), func, mlir::ValueRange{op.getStr()});
+    auto func = module.lookupSymbol<ReussirFuncOp>(funcName);
+    auto call = rewriter.create<ReussirCallOp>(
+        op.getLoc(), func.getFunctionType().getResults(),
+        mlir::SymbolRefAttr::get(rewriter.getContext(), funcName),
+        mlir::ValueRange{op.getStr()}, nullptr, nullptr);
 
     rewriter.replaceOp(op, call.getResults());
     return mlir::success();
@@ -735,7 +740,7 @@ struct SCFOpsLoweringPass
 
     // Configure target legality
     target.addLegalDialect<mlir::arith::ArithDialect, mlir::scf::SCFDialect,
-                           mlir::math::MathDialect, mlir::func::FuncDialect,
+                           mlir::math::MathDialect,
                            mlir::ub::UBDialect, reussir::ReussirDialect>();
 
     // Illegal operations

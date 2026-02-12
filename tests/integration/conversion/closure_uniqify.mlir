@@ -2,7 +2,7 @@
 
 // Test closure uniqify operation rewrite pattern
 module attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> : vector<2xi64>>>} {
-  func.func @test_closure_uniqify() -> !reussir.rc<!reussir.closure<(i32) -> i32>> {
+  reussir.func @test_closure_uniqify() -> !reussir.rc<!reussir.closure<(i32) -> i32>> {
     %token = reussir.token.alloc : !reussir.token<align: 8, size: 32>
     %original = reussir.closure.create -> !reussir.rc<!reussir.closure<(i32) -> i32>> {
       token(%token : !reussir.token<align: 8, size: 32>)
@@ -19,7 +19,7 @@ module attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> :
   }
 }
 
-// CHECK: func.func @test_closure_uniqify() -> !reussir.rc<!reussir.closure<(i32) -> i32>>
+// CHECK: reussir.func @test_closure_uniqify() -> !reussir.rc<!reussir.closure<(i32) -> i32>>
 // CHECK: %[[TOKEN:.*]] = reussir.token.alloc : <align : 8, size : 32>
 // CHECK: %[[ORIGINAL:.*]] = reussir.closure.create -> !reussir.rc<!reussir.closure<(i32) -> i32>>
 // CHECK: %[[IS_UNIQUE:.*]] = reussir.rc.is_unique(%[[ORIGINAL]] : !reussir.rc<!reussir.closure<(i32) -> i32>>) : i1

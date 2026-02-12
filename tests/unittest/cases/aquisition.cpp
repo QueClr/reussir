@@ -8,7 +8,7 @@ import reussir.test.value;
 
 namespace reussir {
 TEST_F(ReussirValueTransformTest, RcAcquisition) {
-  testValueAcquisition("!reussir.rc<i32>", [](mlir::func::FuncOp funcOp) {
+  testValueAcquisition("!reussir.rc<i32>", [](reussir::ReussirFuncOp funcOp) {
     auto &inc = funcOp.getFunctionBody().front().front();
     EXPECT_TRUE(llvm::isa<ReussirRcIncOp>(inc));
   });
@@ -16,7 +16,7 @@ TEST_F(ReussirValueTransformTest, RcAcquisition) {
 
 TEST_F(ReussirValueTransformTest, RefToRcAcquisition) {
   testValueAcquisition("!reussir.ref<!reussir.rc<i32>>",
-                       [](mlir::func::FuncOp funcOp) {
+                       [](reussir::ReussirFuncOp funcOp) {
                          auto &block = funcOp.getFunctionBody().front();
                          auto &loadOp = block.front();
                          auto &incOp = *std::next(block.begin());
@@ -29,7 +29,7 @@ TEST_F(ReussirValueTransformTest, RefToRcAcquisition) {
 TEST_F(ReussirValueTransformTest, RefToCompoundRecordAcquisition) {
   testValueAcquisition(
       R"(!reussir.ref<!reussir.record<compound "Point" {i32, !reussir.record<compound "inner" {i64}>}>>)",
-      [](mlir::func::FuncOp funcOp) {
+      [](reussir::ReussirFuncOp funcOp) {
         auto &block = funcOp.getFunctionBody().front();
 
         // Count operations
@@ -54,7 +54,7 @@ TEST_F(ReussirValueTransformTest, RefToVariantRecordAcquisition) {
       "{!reussir.record<compound \"Option::None\" [value] {}>, "
       "!reussir.record<compound \"Option::Some\" [value] "
       "{i32,!reussir.record<compound \"inner\" {i64}>}>}>>",
-      [](mlir::func::FuncOp funcOp) {
+      [](reussir::ReussirFuncOp funcOp) {
         auto &block = funcOp.getFunctionBody().front();
         auto &ops = block.getOperations();
 

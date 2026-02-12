@@ -2,7 +2,7 @@
 
 module @test {
   // Drop function with wrong complex element type
-  func.func private @drop_func_wrong_complex_type(%ptr : !reussir.ref<!reussir.record<compound "MyStruct1" {i32, f64}>>) -> () {
+  reussir.func private @drop_func_wrong_complex_type(%ptr : !reussir.ref<!reussir.record<compound "MyStruct1" {i32, f64}>>) -> () {
     return
   }
   

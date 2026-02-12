@@ -2,7 +2,7 @@
 
 module @test {
   // Drop function with wrong capability
-  func.func private @drop_func_wrong_capability(%ptr : !reussir.ref<i32 shared>) -> () {
+  reussir.func private @drop_func_wrong_capability(%ptr : !reussir.ref<i32 shared>) -> () {
     return
   }
   

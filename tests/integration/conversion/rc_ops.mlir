@@ -15,7 +15,7 @@ module @test attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense
   // CHECK: store i64 %4, ptr %2, align 8
   // CHECK: %5 = icmp uge i64 %3, 1
   // CHECK: call void @llvm.assume(i1 %5)
-  func.func @rc_inc(%rc: !reussir.rc<i64>){
+  reussir.func @rc_inc(%rc: !reussir.rc<i64>){
     reussir.rc.inc (%rc : !reussir.rc<i64>)
     return 
   }
@@ -25,12 +25,12 @@ module @test attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense
   // CHECK: %3 = atomicrmw add ptr %2, i64 1 monotonic, align 8
   // CHECK: %4 = icmp uge i64 %3, 1
   // CHECK: call void @llvm.assume(i1 %4)
-  func.func @rc_inc_atomic(%rc: !reussir.rc<i64 atomic>){
+  reussir.func @rc_inc_atomic(%rc: !reussir.rc<i64 atomic>){
     reussir.rc.inc (%rc : !reussir.rc<i64 atomic>)
     return 
   }
 
-  func.func @rc_inc_rigid(%rc: !reussir.rc<i64 rigid>){
+  reussir.func @rc_inc_rigid(%rc: !reussir.rc<i64 rigid>){
     // CHECK-LABEL: call void @__reussir_acquire_rigid_object(ptr %0)
     reussir.rc.inc (%rc : !reussir.rc<i64 rigid>)
     return 
@@ -42,7 +42,7 @@ module @test attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense
   // CHECK: %4 = getelementptr { i64, fp128 }, ptr %2, i32 0, i32 1
   // CHECK: store i64 1, ptr %3, align 8
   // CHECK: store fp128 %0, ptr %4, align 16
-  func.func @rc_create(%value: f128) -> !reussir.rc<f128> {
+  reussir.func @rc_create(%value: f128) -> !reussir.rc<f128> {
     %token = reussir.token.alloc : !reussir.token<align: 16, size: 32>
     %rc = reussir.rc.create 
       value(%value : f128) 
@@ -54,7 +54,7 @@ module @test attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense
   // CHECK: %2 = getelementptr { i64, fp128 }, ptr %0, i32 0, i32 1
   // CHECK: %3 = load fp128, ptr %2, align 16
   // CHECK: ret fp128 %3
-  func.func @rc_borrow_then_load_0(%rc : !reussir.rc<f128>) -> f128 {
+  reussir.func @rc_borrow_then_load_0(%rc : !reussir.rc<f128>) -> f128 {
     %borrowed = reussir.rc.borrow(%rc : !reussir.rc<f128>) : !reussir.ref<f128 shared>
     %value = reussir.ref.load(%borrowed : !reussir.ref<f128 shared>) : f128
     return %value : f128
@@ -64,13 +64,13 @@ module @test attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense
   // CHECK: %2 = getelementptr { ptr, ptr, ptr, fp128 }, ptr %0, i32 0, i32 3
   // CHECK: %3 = load fp128, ptr %2, align 16
   // CHECK: ret fp128 %3
-  func.func @rc_borrow_then_load_1(%rc : !reussir.rc<f128 rigid>) -> f128 {
+  reussir.func @rc_borrow_then_load_1(%rc : !reussir.rc<f128 rigid>) -> f128 {
     %borrowed = reussir.rc.borrow(%rc : !reussir.rc<f128 rigid>) : !reussir.ref<f128 rigid>
     %value = reussir.ref.load(%borrowed : !reussir.ref<f128 rigid>) : f128
     return %value : f128
   }
 
-  func.func @rc_borrow_then_load_2(%rc : !reussir.rc<!list>) -> !list {
+  reussir.func @rc_borrow_then_load_2(%rc : !reussir.rc<!list>) -> !list {
     %borrowed = reussir.rc.borrow(%rc : !reussir.rc<!list>) : !reussir.ref<!list shared>
     // CHECK: load %List, ptr %2, align 16
     %value = reussir.ref.load(%borrowed : !reussir.ref<!list shared>) : !list

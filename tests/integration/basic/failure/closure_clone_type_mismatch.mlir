@@ -2,7 +2,7 @@
 
 // Test failure: closure clone with mismatched types
 module attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> : vector<2xi64>>>} {
-  func.func private @test_closure_clone_type_mismatch() -> !reussir.rc<!reussir.closure<(i64) -> i64>> {
+  reussir.func private @test_closure_clone_type_mismatch() -> !reussir.rc<!reussir.closure<(i64) -> i64>> {
     %token = reussir.token.alloc : !reussir.token<align: 8, size: 32>
     %original = reussir.closure.create -> !reussir.rc<!reussir.closure<(i32) -> i32>> {
       token(%token : !reussir.token<align: 8, size: 32>)

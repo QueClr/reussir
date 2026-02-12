@@ -46,7 +46,7 @@ fn even(n : Nat) -> bool {
 
 // --- MLIR ownership checks for even (nested DT, flattened) ---
 // even(%0=n): match on n via borrow+dispatch
-// CHECK-MLIR-LABEL: func.func @"_RC4even"(%0 :
+// CHECK-MLIR-LABEL: reussir.func @"_RC4even"(%0 :
 // CHECK-MLIR:       reussir.rc.borrow (%0 :
 // CHECK-MLIR:       reussir.record.dispatch
 // Zero branch: dec scrutinee, yield true
@@ -72,4 +72,4 @@ fn even(n : Nat) -> bool {
 // CHECK-MLIR:       reussir.ref.load
 // CHECK-MLIR:       reussir.rc.inc
 // CHECK-MLIR:       reussir.rc.dec (%0 :
-// CHECK-MLIR:       func.call @"_RC4even"
+// CHECK-MLIR:       reussir.call @"_RC4even"

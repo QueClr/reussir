@@ -48,6 +48,9 @@ public:
 LLVMTypeConverter::LLVMTypeConverter(mlir::ModuleOp op)
     : mlir::LLVMTypeConverter(op.getContext(), getLowerOptions(op)),
       dataLayout(op) {
+  if (auto tripleAttr =
+          op->getAttrOfType<mlir::StringAttr>("llvm.target_triple"))
+    targetTriple = llvm::Triple(tripleAttr.getValue());
   // Record types
   addConversion(
       [this](RecordType type, llvm::SmallVectorImpl<mlir::Type> &results) {

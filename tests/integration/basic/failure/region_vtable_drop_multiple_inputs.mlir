@@ -2,7 +2,7 @@
 
 module @test {
   // Drop function with multiple inputs
-  func.func private @drop_func_multiple_inputs(%ptr1 : !reussir.ref<i32>, %ptr2 : !reussir.ref<i32>) -> () {
+  reussir.func private @drop_func_multiple_inputs(%ptr1 : !reussir.ref<i32>, %ptr2 : !reussir.ref<i32>) -> () {
     return
   }
   

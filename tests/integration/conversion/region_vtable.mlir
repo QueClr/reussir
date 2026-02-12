@@ -15,7 +15,7 @@
 !node = !reussir.record<compound "Node" [regional] { [field] !reussir.record<compound "Node">, i64, [field] !reussir.record<compound "Node"> }>
 
 module @test attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> : vector<2xi64>>>} {
-  func.func @test() {
+  reussir.func @test() {
     %res = reussir.region.run -> !reussir.rc<!node rigid> {
       ^bb0(%reg: !reussir.region):
       %token = reussir.token.alloc : !reussir.token<align: 8, size: 48>

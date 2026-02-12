@@ -1,7 +1,7 @@
 // RUN: %reussir-opt %s --reussir-lowering-scf-ops | %FileCheck %s
 
 module {
-  // CHECK: func.func private @[[DISPATCHER1:.*REUSSIR_STRING_DISPATCHER.*]](%{{.*}}: !reussir.str<local>) -> (index, i1)
+  // CHECK: reussir.func private @[[DISPATCHER1:.*REUSSIR_STRING_DISPATCHER.*]](%{{.*}}: !reussir.str<local>) -> (index, i1)
   // CHECK:      %[[START:.*]] = reussir.str.unsafe_startswith(%{{.*}} : <local>) "extremely_long_unique_pattern" : i1
   // CHECK:      %[[LEN:.*]] = reussir.str.len(%{{.*}} : <local>) : index
   // CHECK:      %[[C29:.*]] = arith.constant 29 : index
@@ -17,7 +17,7 @@ module {
   // CHECK:        scf.yield %[[POISON]], %[[FALSE]] : index, i1
   // CHECK:      }
   
-  // CHECK: func.func private @[[DISPATCHER2:.*REUSSIR_STRING_DISPATCHER.*]](%{{.*}}: !reussir.str<local>) -> (index, i1)
+  // CHECK: reussir.func private @[[DISPATCHER2:.*REUSSIR_STRING_DISPATCHER.*]](%{{.*}}: !reussir.str<local>) -> (index, i1)
   // CHECK:      %[[LEN1:.*]] = reussir.str.len(%{{.*}} : <local>) : index
   // CHECK:      %[[C0:.*]] = arith.constant 0 : index
   // CHECK:      %[[IS_ZERO:.*]] = arith.cmpi eq, %[[LEN1]], %[[C0]] : index
@@ -54,14 +54,14 @@ module {
   // CHECK:      }
 
   // CHECK-LABEL: @test_select_compressed_short
-  func.func @test_select_compressed_short(%str: !reussir.str<local>) -> (index, i1) {
+  reussir.func @test_select_compressed_short(%str: !reussir.str<local>) -> (index, i1) {
     // CHECK: call @[[DISPATCHER2]]
     %idx, %found = reussir.str.select (%str) ["foo", "bar"] : (!reussir.str<local>) -> (index, i1)
     return %idx, %found : index, i1
   }
 
   // CHECK-LABEL: @test_select_compressed_long
-  func.func @test_select_compressed_long(%str: !reussir.str<local>) -> (index, i1) {
+  reussir.func @test_select_compressed_long(%str: !reussir.str<local>) -> (index, i1) {
      // CHECK: call @[[DISPATCHER1]]
      %idx, %found = reussir.str.select (%str) ["extremely_long_unique_pattern"] : (!reussir.str<local>) -> (index, i1)
      return %idx, %found : index, i1

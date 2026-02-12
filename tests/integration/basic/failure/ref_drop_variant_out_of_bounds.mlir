@@ -4,7 +4,7 @@
 !variant_record = !reussir.record<variant "Test" { i32, i64 }>
 
 module {
-  func.func @test_variant_out_of_bounds(%ref : !reussir.ref<!variant_record>) {
+  reussir.func @test_variant_out_of_bounds(%ref : !reussir.ref<!variant_record>) {
     // expected-error @+1 {{'reussir.ref.drop' op variant index out of bounds: 2 >= 2}}
     reussir.ref.drop(%ref : !reussir.ref<!variant_record>) variant[2]
     return

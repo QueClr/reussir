@@ -17,7 +17,7 @@ fn length(list : List<i32>) -> i32 {
 
 // --- MLIR ownership checks ---
 // length(%0=list): consuming structural traversal
-// CHECK-MLIR-LABEL: func.func @"_RC6length"(%0 :
+// CHECK-MLIR-LABEL: reussir.func @"_RC6length"(%0 :
 // CHECK-MLIR:       reussir.rc.borrow (%0 :
 // CHECK-MLIR:       reussir.record.dispatch
 // Nil: dec list, yield 0
@@ -31,4 +31,4 @@ fn length(list : List<i32>) -> i32 {
 // CHECK-MLIR:       reussir.ref.load
 // CHECK-MLIR:       reussir.rc.inc
 // CHECK-MLIR:       reussir.rc.dec (%0 :
-// CHECK-MLIR:       func.call @"_RC6length"
+// CHECK-MLIR:       reussir.call @"_RC6length"

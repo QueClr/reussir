@@ -1,7 +1,7 @@
 // RUN: %reussir-opt %s -verify-diagnostics
 
 module {
-  func.func @test_wrong_yield_type(%nullable : !reussir.nullable<!reussir.ref<i32>>) -> i32 {
+  reussir.func @test_wrong_yield_type(%nullable : !reussir.nullable<!reussir.ref<i32>>) -> i32 {
     %result = reussir.nullable.dispatch(%nullable : !reussir.nullable<!reussir.ref<i32>>) -> i32 {
       nonnull -> {
         ^bb0(%nonnull_ptr : !reussir.ref<i32>):
@@ -15,6 +15,6 @@ module {
           reussir.scf.yield %default : i32
       }
     }
-    func.return %result : i32
+    reussir.return %result : i32
   }
 }

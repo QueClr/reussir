@@ -17,7 +17,7 @@
 
 module {
   // Test option-like behavior: extract value or return default
-  func.func @test_option_unwrap_or_default(%opt_ref : !reussir.ref<!option>) -> i32 {
+  reussir.func @test_option_unwrap_or_default(%opt_ref : !reussir.ref<!option>) -> i32 {
     %result = reussir.record.dispatch(%opt_ref : !reussir.ref<!option>) -> i32 {
       [0] -> {
         ^bb0(%some_ref : !reussir.ref<!option_some>):
@@ -31,11 +31,11 @@ module {
           reussir.scf.yield %default : i32
       }
     }
-    func.return %result : i32
+    reussir.return %result : i32
   }
 
   // Test result-like behavior: extract ok value or return error code
-  func.func @test_result_unwrap_or_error_code(%result_ref : !reussir.ref<!result>) -> i32 {
+  reussir.func @test_result_unwrap_or_error_code(%result_ref : !reussir.ref<!result>) -> i32 {
     %result = reussir.record.dispatch(%result_ref : !reussir.ref<!result>) -> i32 {
       [0] -> {
         ^bb0(%ok_ref : !reussir.ref<!result_ok>):
@@ -49,11 +49,11 @@ module {
           reussir.scf.yield %error_code : i32
       }
     }
-    func.return %result : i32
+    reussir.return %result : i32
   }
 
   // Test void dispatch with side effects
-  func.func @test_void_dispatch_with_side_effects(%opt_ref : !reussir.ref<!option>) {
+  reussir.func @test_void_dispatch_with_side_effects(%opt_ref : !reussir.ref<!option>) {
     reussir.record.dispatch(%opt_ref : !reussir.ref<!option>) {
       [0] -> {
         ^bb0(%some_ref : !reussir.ref<!option_some>):
@@ -67,10 +67,10 @@ module {
           reussir.scf.yield
       }
     }
-    func.return
+    reussir.return
   }
 
-  func.func @test_foo_is_a_or_b(%foo_ref : !reussir.ref<!foo>) -> i1 {
+  reussir.func @test_foo_is_a_or_b(%foo_ref : !reussir.ref<!foo>) -> i1 {
     %result = reussir.record.dispatch(%foo_ref : !reussir.ref<!foo>) -> i1 {
       [0, 1] -> {
         ^bb0:
@@ -84,7 +84,7 @@ module {
           reussir.scf.yield %false : i1
       }
     }
-    func.return %result : i1
+    reussir.return %result : i1
   }
 }
 

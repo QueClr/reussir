@@ -3,7 +3,7 @@
 
 module {
   // Test nullable dispatch with value extraction or default
-  func.func @test_nullable_unwrap_or_default(%nullable : !reussir.nullable<!reussir.rc<i32>>) -> i32 {
+  reussir.func @test_nullable_unwrap_or_default(%nullable : !reussir.nullable<!reussir.rc<i32>>) -> i32 {
     %result = reussir.nullable.dispatch(%nullable : !reussir.nullable<!reussir.rc<i32>>) -> i32 {
       nonnull -> {
         ^bb0(%nonnull_ptr : !reussir.rc<i32>):
@@ -17,11 +17,11 @@ module {
           reussir.scf.yield %default : i32
       }
     }
-    func.return %result : i32
+    reussir.return %result : i32
   }
 
   // Test nullable dispatch with different return types
-  func.func @test_nullable_unwrap_or_false(%nullable : !reussir.nullable<!reussir.ref<i64>>) -> i1 {
+  reussir.func @test_nullable_unwrap_or_false(%nullable : !reussir.nullable<!reussir.ref<i64>>) -> i1 {
     %result = reussir.nullable.dispatch(%nullable : !reussir.nullable<!reussir.ref<i64>>) -> i1 {
       nonnull -> {
         ^bb0(%nonnull_ptr : !reussir.ref<i64>):
@@ -36,11 +36,11 @@ module {
           reussir.scf.yield %false : i1
       }
     }
-    func.return %result : i1
+    reussir.return %result : i1
   }
 
   // Test nullable dispatch with token types
-  func.func @test_nullable_token_dispatch(%nullable : !reussir.nullable<!reussir.token<align: 8, size: 16>>) -> i32 {
+  reussir.func @test_nullable_token_dispatch(%nullable : !reussir.nullable<!reussir.token<align: 8, size: 16>>) -> i32 {
     %result = reussir.nullable.dispatch(%nullable : !reussir.nullable<!reussir.token<align: 8, size: 16>>) -> i32 {
       nonnull -> {
         ^bb0(%nonnull_token : !reussir.token<align: 8, size: 16>):
@@ -53,11 +53,11 @@ module {
           reussir.scf.yield %failure : i32
       }
     }
-    func.return %result : i32
+    reussir.return %result : i32
   }
 
   // Test void nullable dispatch with side effects
-  func.func @test_void_nullable_dispatch(%nullable : !reussir.nullable<!reussir.rc<i32>>) {
+  reussir.func @test_void_nullable_dispatch(%nullable : !reussir.nullable<!reussir.rc<i32>>) {
     reussir.nullable.dispatch(%nullable : !reussir.nullable<!reussir.rc<i32>>) {
       nonnull -> {
         ^bb0(%nonnull_ptr : !reussir.rc<i32>):
@@ -71,7 +71,7 @@ module {
           reussir.scf.yield
       }
     }
-    func.return
+    reussir.return
   }
 }
 

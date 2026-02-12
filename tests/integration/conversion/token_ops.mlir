@@ -6,7 +6,7 @@ module @test attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense
   // CHECK: %2 = llvm.call @__reussir_allocate(%0, %1) : (i64, i64) -> !llvm.ptr
   // CHECK: llvm.return %2 : !llvm.ptr
   // CHECK: }
-  func.func private @token_alloc() 
+  reussir.func private @token_alloc() 
     -> !reussir.token<align: 8, size: 64> {
       %token = reussir.token.alloc : !reussir.token<align: 8, size: 64>
       return %token : !reussir.token<align: 8, size: 64>
@@ -18,7 +18,7 @@ module @test attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense
   // CHECK: llvm.call @__reussir_deallocate(%arg0, %0, %1) : (!llvm.ptr, i64, i64) -> ()
   // CHECK: llvm.return
   // CHECK: }
-  func.func private @token_free(%token: !reussir.token<align: 8, size: 64>) {
+  reussir.func private @token_free(%token: !reussir.token<align: 8, size: 64>) {
       reussir.token.free (%token : !reussir.token<align: 8, size: 64>)
       return
   }
@@ -26,7 +26,7 @@ module @test attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense
   // CHECK-LABEL: llvm.func @token_reinterpret(%arg0: !llvm.ptr) -> !llvm.ptr attributes {sym_visibility = "private"} {
   // CHECK: llvm.return %arg0 : !llvm.ptr
   // CHECK: }
-  func.func private @token_reinterpret(%token: !reussir.token<align: 8, size: 8>) 
+  reussir.func private @token_reinterpret(%token: !reussir.token<align: 8, size: 8>) 
     -> !reussir.ref<i64> {
       %reinterpreted = reussir.token.reinterpret 
         (%token : !reussir.token<align: 8, size: 8>) 
@@ -42,7 +42,7 @@ module @test attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense
   // CHECK: %4 = llvm.call @__reussir_reallocate(%arg0, %0, %1, %2, %3) : (!llvm.ptr, i64, i64, i64, i64) -> !llvm.ptr
   // CHECK: llvm.return %4 : !llvm.ptr
   // CHECK: }
-  func.func private @token_realloc(%token: !reussir.token<align: 8, size: 8>) -> 
+  reussir.func private @token_realloc(%token: !reussir.token<align: 8, size: 8>) -> 
     !reussir.token<align: 8, size: 16> {
       %reallocated = reussir.token.realloc 
         (%token : !reussir.token<align: 8, size: 8>) 

@@ -2,7 +2,7 @@
 
 // Test failure: closure eval with result closure but expecting void
 module attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> : vector<2xi64>>>} {
-  func.func private @test_closure_eval_result_with_void() {
+  reussir.func private @test_closure_eval_result_with_void() {
     %token = reussir.token.alloc : !reussir.token<align: 8, size: 32>
     %closure = reussir.closure.create -> !reussir.rc<!reussir.closure<() -> i32>> {
       token(%token : !reussir.token<align: 8, size: 32>)

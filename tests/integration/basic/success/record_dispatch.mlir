@@ -11,7 +11,7 @@
 
 module {
   // Test dispatch with single tag
-  func.func @test_single_tag_dispatch(%opt_ref : !reussir.ref<!option>) -> i32 {
+  reussir.func @test_single_tag_dispatch(%opt_ref : !reussir.ref<!option>) -> i32 {
     %result = reussir.record.dispatch(%opt_ref : !reussir.ref<!option>) -> i32 {
       [0] -> {
         ^bb0(%arg : !reussir.ref<!option_some>):
@@ -26,22 +26,22 @@ module {
           reussir.scf.yield %c42 : i32
       }
     }
-    func.return %result : i32
+    reussir.return %result : i32
   }
 
   // Test dispatch with multiple tags in a set
-  func.func @test_multi_tag_dispatch(%result_ref : !reussir.ref<!result>) -> i32 {
+  reussir.func @test_multi_tag_dispatch(%result_ref : !reussir.ref<!result>) -> i32 {
     %result = reussir.record.dispatch(%result_ref : !reussir.ref<!result>) -> i32 {
       [0, 1] -> {
         %c100 = arith.constant 100 : i32
         reussir.scf.yield %c100 : i32
       }
     }
-    func.return %result : i32
+    reussir.return %result : i32
   }
 
   // Test dispatch without return value
-  func.func @test_void_dispatch(%opt_ref : !reussir.ref<!option>) {
+  reussir.func @test_void_dispatch(%opt_ref : !reussir.ref<!option>) {
     reussir.record.dispatch(%opt_ref : !reussir.ref<!option>) {
       [0] -> {
         ^bb0(%arg : !reussir.ref<!option_some>):
@@ -52,6 +52,6 @@ module {
           reussir.scf.yield
       }
     }
-    func.return
+    reussir.return
   }
 }

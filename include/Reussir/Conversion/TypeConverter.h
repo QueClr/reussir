@@ -13,6 +13,7 @@
 #ifndef REUSSIR_CONVERSION_TYPECONVERTER_H
 #define REUSSIR_CONVERSION_TYPECONVERTER_H
 
+#include <llvm/TargetParser/Triple.h>
 #include <mlir/Conversion/LLVMCommon/TypeConverter.h>
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
 #include <mlir/Interfaces/DataLayoutInterfaces.h>
@@ -31,9 +32,11 @@ public:
                     llvm::SmallVectorImpl<mlir::Type> &results);
 
   const mlir::DataLayout &getDataLayout() const { return dataLayout; }
+  const llvm::Triple &getTargetTriple() const { return targetTriple; }
 
 private:
   mlir::DataLayout dataLayout;
+  llvm::Triple targetTriple;
 };
 } // namespace reussir
 

@@ -6,7 +6,7 @@
 !option = !reussir.record<variant "Option" {!option_some, !option_none}>
 
 module {
-  func.func @test_single_tag_missing_arg(%opt_ref : !reussir.ref<!option>) -> i32 {
+  reussir.func @test_single_tag_missing_arg(%opt_ref : !reussir.ref<!option>) -> i32 {
     // expected-error @+1 {{'reussir.record.dispatch' op region 0 must have exactly one argument for single tag}}
     %result = reussir.record.dispatch(%opt_ref : !reussir.ref<!option>) -> i32 {
       [0] -> {
@@ -20,6 +20,6 @@ module {
           reussir.scf.yield %c0 : i32
       }
     }
-    func.return %result : i32
+    reussir.return %result : i32
   }
 }

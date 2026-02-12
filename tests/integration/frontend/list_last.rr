@@ -23,7 +23,7 @@ fn last(list : List<i32>) -> Option<i32> {
 
 // --- MLIR ownership checks ---
 // last(%0=list): match with nested pattern (flattened DT)
-// CHECK-MLIR-LABEL: func.func @"_RC4last"(%0 :
+// CHECK-MLIR-LABEL: reussir.func @"_RC4last"(%0 :
 // CHECK-MLIR:       reussir.rc.borrow (%0 :
 // CHECK-MLIR:       reussir.record.dispatch
 // Nil: dec list, return None
@@ -46,4 +46,4 @@ fn last(list : List<i32>) -> Option<i32> {
 // CHECK-MLIR:       reussir.ref.load
 // CHECK-MLIR:       reussir.rc.inc
 // CHECK-MLIR:       reussir.rc.dec (%0 :
-// CHECK-MLIR:       func.call @"_RC4last"
+// CHECK-MLIR:       reussir.call @"_RC4last"

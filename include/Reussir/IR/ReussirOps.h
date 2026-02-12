@@ -22,6 +22,7 @@
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/SymbolTable.h>
 #include <mlir/Interfaces/ControlFlowInterfaces.h>
+#include <mlir/Interfaces/FunctionInterfaces.h>
 #include <mlir/Interfaces/InferTypeOpInterface.h>
 #include <mlir/Interfaces/SideEffectInterfaces.h>
 
@@ -67,9 +68,9 @@ mlir::LogicalResult emitOwnershipAcquisition(mlir::Value value,
 // drop operation. Returns the existing destructor if one is already present.
 //
 //===----------------------------------------------------------------------===//
-mlir::func::FuncOp createDtorIfNotExists(mlir::ModuleOp moduleOp,
-                                         RecordType type,
-                                         mlir::OpBuilder &builder);
+ReussirFuncOp createDtorIfNotExists(mlir::ModuleOp moduleOp,
+                                    RecordType type,
+                                    mlir::OpBuilder &builder);
 
 //===----------------------------------------------------------------------===//
 // emitOwnershipAcquisitionFuncIfNotExists
@@ -81,7 +82,7 @@ mlir::func::FuncOp createDtorIfNotExists(mlir::ModuleOp moduleOp,
 // function if one is already present. The RecordType must be a named type.
 //
 //===----------------------------------------------------------------------===//
-mlir::func::FuncOp emitOwnershipAcquisitionFuncIfNotExists(
+ReussirFuncOp emitOwnershipAcquisitionFuncIfNotExists(
     mlir::ModuleOp moduleOp, RecordType type, mlir::OpBuilder &builder);
 
 //===----------------------------------------------------------------------===//

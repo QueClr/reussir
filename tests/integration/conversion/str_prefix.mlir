@@ -3,7 +3,7 @@
 module {
   // CHECK-LABEL: @test_startswith_safe
   // CHECK-SAME: %[[STR:.*]]: !llvm.struct<(ptr, i64)>
-  func.func @test_startswith_safe(%str: !reussir.str<local>) -> i1 {
+  reussir.func @test_startswith_safe(%str: !reussir.str<local>) -> i1 {
     // CHECK: %[[LEN:.*]] = llvm.extractvalue %[[STR]][1] : !llvm.struct<(ptr, i64)>
     // CHECK: %[[PREFIX_LEN:.*]] = llvm.mlir.constant(3 : index) : i64
     // CHECK: %[[COND:.*]] = llvm.icmp "uge" %[[LEN]], %[[PREFIX_LEN]] : i64
@@ -25,7 +25,7 @@ module {
 
   // CHECK-LABEL: @test_unsafe_startswith_short
   // CHECK-SAME: %[[STR:.*]]: !llvm.struct<(ptr, i64)>
-  func.func @test_unsafe_startswith_short(%str: !reussir.str<local>) -> i1 {
+  reussir.func @test_unsafe_startswith_short(%str: !reussir.str<local>) -> i1 {
     // CHECK: %[[PTR:.*]] = llvm.extractvalue %[[STR]][0] : !llvm.struct<(ptr, i64)>
     // CHECK: %[[PREFIX_ADDR:.*]] = llvm.mlir.addressof @{{.*}} : !llvm.ptr
     // CHECK: %[[PREFIX_LEN:.*]] = llvm.mlir.constant(3 : i64) : i64
@@ -39,7 +39,7 @@ module {
 
   // CHECK-LABEL: @test_unsafe_startswith_long
   // CHECK-SAME: %[[STR:.*]]: !llvm.struct<(ptr, i64)>
-  func.func @test_unsafe_startswith_long(%str: !reussir.str<local>) -> i1 {
+  reussir.func @test_unsafe_startswith_long(%str: !reussir.str<local>) -> i1 {
     // CHECK: %[[PTR:.*]] = llvm.extractvalue %[[STR]][0] : !llvm.struct<(ptr, i64)>
     // CHECK: %[[PREFIX_ADDR:.*]] = llvm.mlir.addressof @{{.*}} : !llvm.ptr
     // CHECK: %[[PREFIX_LEN:.*]] = llvm.mlir.constant(32 : i64) : i64

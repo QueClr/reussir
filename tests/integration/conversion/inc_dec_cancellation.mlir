@@ -9,7 +9,7 @@
 !list = !reussir.record<variant "List" { !list_nil, !list_cons }>
 
 module attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> : vector<2xi64>>, #dlti.dl_entry<i8, dense<8> : vector<2xi64>>> }  {
-  func.func @take_tail(%arg0: !reussir.rc<!list>) -> !reussir.rc<!list> {
+  reussir.func @take_tail(%arg0: !reussir.rc<!list>) -> !reussir.rc<!list> {
     %ref = reussir.rc.borrow (%arg0 : !reussir.rc<!list>) : !reussir.ref<!list shared>
     %res = reussir.record.dispatch (%ref : !reussir.ref<!list shared>) -> !reussir.rc<!list> {
       [0] -> {

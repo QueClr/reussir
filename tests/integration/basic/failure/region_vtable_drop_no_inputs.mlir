@@ -2,7 +2,7 @@
 
 module @test {
   // Drop function with no inputs
-  func.func private @drop_func_no_inputs() -> () {
+  reussir.func private @drop_func_no_inputs() -> () {
     return
   }
   

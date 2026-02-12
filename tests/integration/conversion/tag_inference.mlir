@@ -8,7 +8,7 @@
 module {
     // CHECK-LABEL: reussir.ref.drop
     // CHECK-SAME: variant[1]
-    func.func @case_1(
+    reussir.func @case_1(
         %rc: !reussir.rc<!list>
     ) {
         %ref = reussir.rc.borrow(%rc : !reussir.rc<!list>) : !reussir.ref<!list>
@@ -18,7 +18,7 @@ module {
         return
     }
 
-    func.func @case_2(
+    reussir.func @case_2(
         %rc: !reussir.rc<!list>
     ) {
         %ref = reussir.rc.borrow(%rc : !reussir.rc<!list>) : !reussir.ref<!list>

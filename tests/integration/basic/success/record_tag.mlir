@@ -11,7 +11,7 @@
 
 module {
   // Test getting tag from a variant record reference
-  func.func @test_option_tag(%opt_ref : !reussir.ref<!option>) -> index {
+  reussir.func @test_option_tag(%opt_ref : !reussir.ref<!option>) -> index {
     // CHECK: reussir.record.tag
     // CHECK: return
     %tag = reussir.record.tag(%opt_ref : !reussir.ref<!option>) : index
@@ -19,7 +19,7 @@ module {
   }
 
   // Test getting tag from a result variant record
-  func.func @test_result_tag(%result_ref : !reussir.ref<!result>) -> index {
+  reussir.func @test_result_tag(%result_ref : !reussir.ref<!result>) -> index {
     // CHECK: reussir.record.tag
     // CHECK: return
     %tag = reussir.record.tag(%result_ref : !reussir.ref<!result>) : index

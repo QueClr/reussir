@@ -4,7 +4,7 @@ module @test attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense
     type(i64)
   }
   
-  func.func @test_function(%region: !reussir.region) {
+  reussir.func @test_function(%region: !reussir.region) {
     %token = reussir.token.alloc : !reussir.token<align: 8, size: 32>
     %val = arith.constant 42 : i32
     // expected-error @+1 {{vtable type attribute must match value input type, vtable type: 'i64', value type: 'i32'}}

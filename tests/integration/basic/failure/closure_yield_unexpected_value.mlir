@@ -2,7 +2,7 @@
 
 // Test closure yield with return value when none expected
 module attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> : vector<2xi64>>>} {
-  func.func private @test_closure_yield_unexpected_value() -> !reussir.rc<!reussir.closure<(i32)>> {
+  reussir.func private @test_closure_yield_unexpected_value() -> !reussir.rc<!reussir.closure<(i32)>> {
     %token = reussir.token.alloc : !reussir.token<align: 8, size: 32>
     %0 = reussir.closure.create -> !reussir.rc<!reussir.closure<(i32)>> {
       token(%token : !reussir.token<align: 8, size: 32>)

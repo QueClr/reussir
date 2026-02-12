@@ -10,7 +10,7 @@ module @test attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense
   // CHECK: %3 = load i64, ptr %2, align 8
   // CHECK: %4 = icmp eq i64 %3, 1
   // CHECK: ret i1 %4
-  func.func @rc_is_unique_shared(%rc: !reussir.rc<i64>) -> i1 {
+  reussir.func @rc_is_unique_shared(%rc: !reussir.rc<i64>) -> i1 {
     %is_unique = reussir.rc.is_unique (%rc : !reussir.rc<i64>) : i1
     return %is_unique : i1
   }
@@ -21,7 +21,7 @@ module @test attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense
   // CHECK: %3 = load i64, ptr %2, align 8
   // CHECK: %4 = icmp eq i64 %3, 1
   // CHECK: ret i1 %4
-  func.func @rc_is_unique_struct(%rc: !reussir.rc<!test_struct>) -> i1 {
+  reussir.func @rc_is_unique_struct(%rc: !reussir.rc<!test_struct>) -> i1 {
     %is_unique = reussir.rc.is_unique (%rc : !reussir.rc<!test_struct>) : i1
     return %is_unique : i1
   }

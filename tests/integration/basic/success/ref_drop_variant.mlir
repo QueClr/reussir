@@ -5,7 +5,7 @@
 }>
 
 module {
-  func.func @test_variant_drop_valid(%ref : !reussir.ref<!complex_variant>) {
+  reussir.func @test_variant_drop_valid(%ref : !reussir.ref<!complex_variant>) {
     reussir.ref.drop(%ref : !reussir.ref<!complex_variant>) variant[0]
     return
   }

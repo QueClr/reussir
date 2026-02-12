@@ -17,7 +17,7 @@ fn append(a : List<i32>, b : List<i32>) -> List<i32> {
 
 // --- MLIR ownership checks ---
 // append(%0=a, %1=b): consuming first list, passing through second
-// CHECK-MLIR-LABEL: func.func @"_RC6append"(%0 :
+// CHECK-MLIR-LABEL: reussir.func @"_RC6append"(%0 :
 // CHECK-MLIR:       reussir.rc.borrow (%0 :
 // CHECK-MLIR:       reussir.record.dispatch
 // Nil: dec a, yield b (ownership of b transfers to caller)
@@ -32,7 +32,7 @@ fn append(a : List<i32>, b : List<i32>) -> List<i32> {
 // CHECK-MLIR:       reussir.ref.project
 // CHECK-MLIR:       reussir.ref.load
 // CHECK-MLIR:       reussir.rc.dec (%0 :
-// CHECK-MLIR:       func.call @"_RC6append"
+// CHECK-MLIR:       reussir.call @"_RC6append"
 // CHECK-MLIR:       reussir.record.compound
 // CHECK-MLIR:       reussir.record.variant
 // CHECK-MLIR:       reussir.rc.create

@@ -19,7 +19,7 @@ module attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> :
   // CHECK: %12 = inttoptr i64 %11 to ptr
   // CHECK: store ptr %12, ptr %3, align 8
   // CHECK: ret ptr %0
-  func.func @apply_to_closure(%closure: !reussir.rc<!reussir.closure<(i32) -> i32>>, %arg: i32) -> !reussir.rc<!reussir.closure<() -> i32>> {
+  reussir.func @apply_to_closure(%closure: !reussir.rc<!reussir.closure<(i32) -> i32>>, %arg: i32) -> !reussir.rc<!reussir.closure<() -> i32>> {
     %applied = reussir.closure.apply (%arg : i32) to (%closure : !reussir.rc<!reussir.closure<(i32) -> i32>>) : !reussir.rc<!reussir.closure<() -> i32>>
     return %applied : !reussir.rc<!reussir.closure<() -> i32>>
   }
@@ -51,7 +51,7 @@ module attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> :
   // CHECK: %23 = inttoptr i64 %22 to ptr
   // CHECK: store ptr %23, ptr %14, align 8
   // CHECK: ret ptr %0
-  func.func @apply_multiple_args(%closure: !reussir.rc<!reussir.closure<(i32, i64) -> i32>>, %arg1: i32, %arg2: i64) -> !reussir.rc<!reussir.closure<() -> i32>> {
+  reussir.func @apply_multiple_args(%closure: !reussir.rc<!reussir.closure<(i32, i64) -> i32>>, %arg1: i32, %arg2: i64) -> !reussir.rc<!reussir.closure<() -> i32>> {
     %applied1 = reussir.closure.apply (%arg1 : i32) to (%closure : !reussir.rc<!reussir.closure<(i32, i64) -> i32>>) : !reussir.rc<!reussir.closure<(i64) -> i32>>
     %applied2 = reussir.closure.apply (%arg2 : i64) to (%applied1 : !reussir.rc<!reussir.closure<(i64) -> i32>>) : !reussir.rc<!reussir.closure<() -> i32>>
     return %applied2 : !reussir.rc<!reussir.closure<() -> i32>>
@@ -72,7 +72,7 @@ module attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> :
   // CHECK: %12 = inttoptr i64 %11 to ptr
   // CHECK: store ptr %12, ptr %3, align 8
   // CHECK: ret ptr %0
-  func.func @apply_void_closure(%closure: !reussir.rc<!reussir.closure<(i32)>>, %arg: i32) -> !reussir.rc<!reussir.closure<()>> {
+  reussir.func @apply_void_closure(%closure: !reussir.rc<!reussir.closure<(i32)>>, %arg: i32) -> !reussir.rc<!reussir.closure<()>> {
     %applied = reussir.closure.apply (%arg : i32) to (%closure : !reussir.rc<!reussir.closure<(i32)>>) : !reussir.rc<!reussir.closure<()>>
     return %applied : !reussir.rc<!reussir.closure<()>>
   }
@@ -87,7 +87,7 @@ module attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> :
   // CHECK: %7 = inttoptr i64 %6 to ptr
   // CHECK: store ptr %7, ptr %3, align 8
   // CHECK: ret ptr %0
-  func.func @apply_small_type(%closure: !reussir.rc<!reussir.closure<(i8) -> i8>>, %arg: i8) -> !reussir.rc<!reussir.closure<() -> i8>> {
+  reussir.func @apply_small_type(%closure: !reussir.rc<!reussir.closure<(i8) -> i8>>, %arg: i8) -> !reussir.rc<!reussir.closure<() -> i8>> {
     %applied = reussir.closure.apply (%arg : i8) to (%closure : !reussir.rc<!reussir.closure<(i8) -> i8>>) : !reussir.rc<!reussir.closure<() -> i8>>
     return %applied : !reussir.rc<!reussir.closure<() -> i8>>
   }

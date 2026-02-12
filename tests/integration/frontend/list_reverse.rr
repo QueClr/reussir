@@ -48,7 +48,7 @@ pub fn reverse(list : List<i32>) -> List<i32> {
 
 // --- MLIR ownership checks for reverse_impl ---
 // reverse_impl(%0=list, %1=acc): match on list via borrow+dispatch
-// CHECK-MLIR-LABEL: func.func @"_RC12reverse_impl"(%0 :
+// CHECK-MLIR-LABEL: reussir.func @"_RC12reverse_impl"(%0 :
 // CHECK-MLIR:       reussir.rc.borrow (%0 :
 // CHECK-MLIR:       reussir.record.dispatch
 // Nil branch: dec scrutinee (list), yield acc
@@ -66,10 +66,10 @@ pub fn reverse(list : List<i32>) -> List<i32> {
 // CHECK-MLIR:       reussir.record.compound
 // CHECK-MLIR:       reussir.record.variant
 // CHECK-MLIR:       reussir.rc.create
-// CHECK-MLIR:       func.call @"_RC12reverse_impl"
+// CHECK-MLIR:       reussir.call @"_RC12reverse_impl"
 
 // reverse: no RC ops, just create Nil and call reverse_impl
-// CHECK-MLIR-LABEL: func.func @"_RC7reverse"
+// CHECK-MLIR-LABEL: reussir.func @"_RC7reverse"
 // CHECK-MLIR-NOT:   reussir.rc.inc
 // CHECK-MLIR-NOT:   reussir.rc.dec
-// CHECK-MLIR:       func.return
+// CHECK-MLIR:       reussir.return

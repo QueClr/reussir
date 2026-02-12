@@ -6,7 +6,7 @@
 !option = !reussir.record<variant "Option" {!option_some, !option_none}>
 
 module {
-  func.func @test_overlapping_tags(%opt_ref : !reussir.ref<!option>) -> i32 {
+  reussir.func @test_overlapping_tags(%opt_ref : !reussir.ref<!option>) -> i32 {
     // expected-error @+1 {{'reussir.record.dispatch' op tag 0 in tag set 1 is already covered by a previous tag set}}
     %result = reussir.record.dispatch(%opt_ref : !reussir.ref<!option>) -> i32 {
       [0] -> {
@@ -20,6 +20,6 @@ module {
           reussir.scf.yield %c0 : i32
       }
     }
-    func.return %result : i32
+    reussir.return %result : i32
   }
 }

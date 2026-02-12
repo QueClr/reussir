@@ -1,7 +1,7 @@
 // RUN: %reussir-opt %s --reussir-lowering-basic-ops | %FileCheck %s
 module @test attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> : vector<2xi64>>>} {
 
-  func.func @reference_load(%ref: !reussir.ref<i64>) 
+  reussir.func @reference_load(%ref: !reussir.ref<i64>) 
     -> i64 {
       %value = reussir.ref.load (%ref : !reussir.ref<i64>) : i64
       return %value : i64
@@ -11,7 +11,7 @@ module @test attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense
   // CHECK: llvm.return %0 : i64
   // CHECK: }
   
-  func.func @reference_store(%ref: !reussir.ref<i64 field>, %value: i64) {
+  reussir.func @reference_store(%ref: !reussir.ref<i64 field>, %value: i64) {
       reussir.ref.store (%ref : !reussir.ref<i64 field>) (%value : i64)
       return
   }
@@ -20,7 +20,7 @@ module @test attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense
   // CHECK: llvm.return
   // CHECK: }
 
-  func.func @reference_spill(%value: i64) -> i64 {
+  reussir.func @reference_spill(%value: i64) -> i64 {
       %spilled = reussir.ref.spilled (%value : i64) : !reussir.ref<i64>
       %load = reussir.ref.load (%spilled : !reussir.ref<i64>) : i64
       return %load : i64
@@ -34,7 +34,7 @@ module @test attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense
   // CHECK: llvm.return %3 : i64
   // CHECK: }
 
-  func.func @reference_project(%struct_ref: !reussir.ref<!reussir.record<compound "TestStruct" {i64, i64}>>) -> !reussir.ref<i64> {
+  reussir.func @reference_project(%struct_ref: !reussir.ref<!reussir.record<compound "TestStruct" {i64, i64}>>) -> !reussir.ref<i64> {
       %field_ref = reussir.ref.project (%struct_ref : !reussir.ref<!reussir.record<compound "TestStruct" {i64, i64}>>) [0] : !reussir.ref<i64>
       return %field_ref : !reussir.ref<i64>
   }
@@ -43,7 +43,7 @@ module @test attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense
   // CHECK: llvm.return %[[result]] : !llvm.ptr
   // CHECK: }
 
-  func.func @reference_diff(%base: !reussir.ref<i64>, %target: !reussir.ref<i64>) -> index {
+  reussir.func @reference_diff(%base: !reussir.ref<i64>, %target: !reussir.ref<i64>) -> index {
       %diff = reussir.ref.diff %base, %target : (!reussir.ref<i64>, !reussir.ref<i64>) -> index
       return %diff : index
   }
@@ -54,7 +54,7 @@ module @test attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense
   // CHECK: llvm.return %[[diff]] : i64
   // CHECK: }
 
-  func.func @reference_cmp(%lhs: !reussir.ref<i64>, %rhs: !reussir.ref<i64>) -> i1 {
+  reussir.func @reference_cmp(%lhs: !reussir.ref<i64>, %rhs: !reussir.ref<i64>) -> i1 {
       %flag = reussir.ref.cmp eq %lhs, %rhs : (!reussir.ref<i64>, !reussir.ref<i64>) -> i1
       return %flag : i1
   }
@@ -65,7 +65,7 @@ module @test attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense
   // CHECK: llvm.return %[[cmp]] : i1
   // CHECK: }
 
-  func.func @reference_memcpy(%src: !reussir.ref<i64>, %dst: !reussir.ref<i64>) {
+  reussir.func @reference_memcpy(%src: !reussir.ref<i64>, %dst: !reussir.ref<i64>) {
       reussir.ref.memcpy %src to %dst : !reussir.ref<i64> to !reussir.ref<i64>
       return
   }

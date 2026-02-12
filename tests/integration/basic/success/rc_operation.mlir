@@ -1,16 +1,16 @@
 // RUN: %reussir-opt %s | %reussir-opt
 module @test attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> : vector<2xi64>>>} {
-  func.func private @inc_rc(%rc: !reussir.rc<i64>) {
+  reussir.func private @inc_rc(%rc: !reussir.rc<i64>) {
       reussir.rc.inc (%rc : !reussir.rc<i64>)
       return 
   }
-  func.func private @dec_rc(%rc: !reussir.rc<i64>) 
+  reussir.func private @dec_rc(%rc: !reussir.rc<i64>) 
     -> !reussir.nullable<!reussir.token<align: 8, size: 16>> {
       %tk = reussir.rc.dec (%rc : !reussir.rc<i64>) 
         : !reussir.nullable<!reussir.token<align: 8, size: 16>>
       return %tk : !reussir.nullable<!reussir.token<align: 8, size: 16>>
   }
-  func.func private @create_rc() 
+  reussir.func private @create_rc() 
     -> !reussir.rc<i64> {
       %zero = arith.constant 0 : i64
       %tk = reussir.token.alloc : !reussir.token<align: 8, size: 16>
@@ -18,7 +18,7 @@ module @test attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense
         : !reussir.rc<i64>
       return %rc : !reussir.rc<i64>
   }
-  func.func private @create_rc_in_region(%reg : !reussir.region)
+  reussir.func private @create_rc_in_region(%reg : !reussir.region)
     -> !reussir.rc<i64 flex> {
       %zero = arith.constant 0 : i64
       %tk = reussir.token.alloc : !reussir.token<align: 8, size: 32>

@@ -207,9 +207,9 @@ public:
         .Case<RecordType>([&](RecordType recordType) {
           if (shouldOutline(op, recordType)) {
             mlir::ModuleOp moduleOp = op->getParentOfType<mlir::ModuleOp>();
-            mlir::func::FuncOp dtor =
+            ReussirFuncOp dtor =
                 createDtorIfNotExists(moduleOp, recordType, rewriter);
-            rewriter.create<mlir::func::CallOp>(op.getLoc(), dtor, op.getRef());
+            rewriter.create<ReussirCallOp>(op.getLoc(), dtor.getFunctionType().getResults(), mlir::SymbolRefAttr::get(rewriter.getContext(), dtor.getName()), mlir::ValueRange{op.getRef()}, nullptr, nullptr);
             rewriter.eraseOp(op);
             return llvm::success();
           }

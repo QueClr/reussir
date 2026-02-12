@@ -2,7 +2,7 @@
 
 module {
   // Test nullable dispatch with return value
-  func.func @test_nullable_dispatch_with_return(%nullable : !reussir.nullable<!reussir.rc<i64>>) -> i32 {
+  reussir.func @test_nullable_dispatch_with_return(%nullable : !reussir.nullable<!reussir.rc<i64>>) -> i32 {
     %result = reussir.nullable.dispatch(%nullable : !reussir.nullable<!reussir.rc<i64>>) -> i32 {
       nonnull -> {
         ^bb0(%nonnull_ptr : !reussir.rc<i64>):
@@ -15,11 +15,11 @@ module {
           reussir.scf.yield %c0 : i32
       }
     }
-    func.return %result : i32
+    reussir.return %result : i32
   }
 
   // Test nullable dispatch without return value
-  func.func @test_nullable_dispatch_void(%nullable : !reussir.nullable<!reussir.ref<i32>>) {
+  reussir.func @test_nullable_dispatch_void(%nullable : !reussir.nullable<!reussir.ref<i32>>) {
     reussir.nullable.dispatch(%nullable : !reussir.nullable<!reussir.ref<i32>>) {
       nonnull -> {
         ^bb0(%nonnull_ptr : !reussir.ref<i32>):
@@ -30,11 +30,11 @@ module {
           reussir.scf.yield
       }
     }
-    func.return
+    reussir.return
   }
 
   // Test nullable dispatch with different inner types
-  func.func @test_nullable_dispatch_different_types(%nullable : !reussir.nullable<!reussir.token<align: 8, size: 16>>) -> i1 {
+  reussir.func @test_nullable_dispatch_different_types(%nullable : !reussir.nullable<!reussir.token<align: 8, size: 16>>) -> i1 {
     %result = reussir.nullable.dispatch(%nullable : !reussir.nullable<!reussir.token<align: 8, size: 16>>) -> i1 {
       nonnull -> {
         ^bb0(%nonnull_token : !reussir.token<align: 8, size: 16>):
@@ -47,6 +47,6 @@ module {
           reussir.scf.yield %false : i1
       }
     }
-    func.return %result : i1
+    reussir.return %result : i1
   }
 }

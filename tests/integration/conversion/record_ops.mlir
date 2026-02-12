@@ -15,7 +15,7 @@
 !result = !reussir.record<variant "Result" {!result_ok, !result_err}>
 
 module {
-  func.func @cons(%fst : i32, %tail : !reussir.rc<!list>) -> !reussir.rc<!list> {
+  reussir.func @cons(%fst : i32, %tail : !reussir.rc<!list>) -> !reussir.rc<!list> {
     %0 = reussir.record.compound(%fst, %tail : i32, !reussir.rc<!list>) : !cons
     %1 = reussir.record.variant [0] (%0 : !cons) : !list
     %token = reussir.token.alloc : !reussir.token<align: 8, size: 32>
@@ -25,12 +25,12 @@ module {
     return %rc : !reussir.rc<!list>
   }
 
-  func.func @test_option_tag(%opt_ref : !reussir.ref<!option>) -> index {
+  reussir.func @test_option_tag(%opt_ref : !reussir.ref<!option>) -> index {
     %tag = reussir.record.tag(%opt_ref : !reussir.ref<!option>) : index
     return %tag : index
   }
 
-  func.func @test_result_tag(%result_ref : !reussir.ref<!result>) -> index {
+  reussir.func @test_result_tag(%result_ref : !reussir.ref<!result>) -> index {
     %tag = reussir.record.tag(%result_ref : !reussir.ref<!result>) : index
     return %tag : index
   }

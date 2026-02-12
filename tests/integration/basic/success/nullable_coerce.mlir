@@ -1,17 +1,17 @@
 // RUN: %reussir-opt %s | %reussir-opt
 
 module @test attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> : vector<2xi64>>>} {
-  func.func @nullable_coerce_token() {
+  reussir.func @nullable_coerce_token() {
     %token = reussir.token.alloc : !reussir.token<align: 8, size: 64>
     
     %nullable = reussir.nullable.create(%token : !reussir.token<align: 8, size: 64>) : !reussir.nullable<!reussir.token<align: 8, size: 64>>
     
     %coerced = reussir.nullable.coerce(%nullable : !reussir.nullable<!reussir.token<align: 8, size: 64>>) : !reussir.token<align: 8, size: 64>
     
-    func.return
+    reussir.return
   }
 
-  func.func @nullable_coerce_rc() {
+  reussir.func @nullable_coerce_rc() {
     // Create an RC value properly
     %token = reussir.token.alloc : !reussir.token<align: 8, size: 16>
     %val = arith.constant 42 : i64
@@ -21,10 +21,10 @@ module @test attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense
     
     %coerced = reussir.nullable.coerce(%nullable : !reussir.nullable<!reussir.rc<i64>>) : !reussir.rc<i64>
     
-    func.return
+    reussir.return
   }
 
-  func.func @nullable_coerce_ref() {
+  reussir.func @nullable_coerce_ref() {
     // Create a ref value properly
     %val = arith.constant 42 : i64
     %ref = reussir.ref.spilled(%val : i64) : !reussir.ref<i64>
@@ -33,6 +33,6 @@ module @test attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense
     
     %coerced = reussir.nullable.coerce(%nullable : !reussir.nullable<!reussir.ref<i64>>) : !reussir.ref<i64>
     
-    func.return
+    reussir.return
   }
 }

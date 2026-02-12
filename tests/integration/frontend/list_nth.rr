@@ -28,7 +28,7 @@ fn nth(list : List<i32>, n : i32) -> Option<i32> {
 
 // --- MLIR ownership checks ---
 // nth(%0=list, %1=n): consuming traversal with index
-// CHECK-MLIR-LABEL: func.func @"_RC3nth"(%0 :
+// CHECK-MLIR-LABEL: reussir.func @"_RC3nth"(%0 :
 // CHECK-MLIR:       reussir.rc.borrow (%0 :
 // CHECK-MLIR:       reussir.record.dispatch
 // Nil: dec list, return None
@@ -50,4 +50,4 @@ fn nth(list : List<i32>, n : i32) -> Option<i32> {
 // CHECK-MLIR:       reussir.record.variant
 // CHECK-MLIR:       reussir.rc.create
 // n!=0 branch: recurse with xs and n-1
-// CHECK-MLIR:       func.call @"_RC3nth"
+// CHECK-MLIR:       reussir.call @"_RC3nth"

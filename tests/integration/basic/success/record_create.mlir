@@ -5,7 +5,7 @@
 !list = !reussir.record<variant "List" {!cons, !nil}>
 
 module {
-  func.func @cons(%fst : i32, %tail : !reussir.rc<!list>) -> !reussir.rc<!list> {
+  reussir.func @cons(%fst : i32, %tail : !reussir.rc<!list>) -> !reussir.rc<!list> {
     %0 = reussir.record.compound(%fst, %tail : i32, !reussir.rc<!list>) : !cons
     %1 = reussir.record.variant [0] (%0 : !cons) : !list
     %token = reussir.token.alloc : !reussir.token<align: 8, size: 32>

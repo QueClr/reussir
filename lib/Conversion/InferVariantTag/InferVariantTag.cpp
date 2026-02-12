@@ -37,7 +37,7 @@ struct InferVariantTagPass
 };
 } // namespace
 
-void runTagInference(mlir::func::FuncOp func) {
+void runTagInference(ReussirFuncOp func) {
   // Initialize analyses
   mlir::AliasAnalysis aliasAnalysis(func);
   mlir::DominanceInfo dominanceInfo(func);
