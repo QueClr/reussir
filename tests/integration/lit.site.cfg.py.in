@@ -19,6 +19,7 @@ config.reussir_elab_path = r'@reussir_elab_path@'
 config.reussir_compiler_path = r'@reussir_compiler_path@'
 config.reussir_repl_path = r'@reussir_repl_path@'
 config.reussir_parser_path = r'@reussir_parser_path@'
+config.target_triple = r'@REUSSIR_TARGET_TRIPLE@'
 
 lit_config.load_config(
         config, os.path.join(config.test_root, "lit.cfg.py"))

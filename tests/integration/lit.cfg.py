@@ -31,6 +31,23 @@ config.substitutions.append((r'%reussir-compiler', config.reussir_compiler_path)
 config.substitutions.append((r'%reussir-repl', config.reussir_repl_path))
 config.substitutions.append((r'%reussir-parser', config.reussir_parser_path))
 
+# Target triple and architecture features
+config.substitutions.append((r'%target_triple', config.target_triple))
+
+triple = config.target_triple.lower()
+if 'x86_64' in triple or 'x86-64' in triple:
+    config.available_features.add('x86_64')
+elif 'aarch64' in triple or 'arm64' in triple:
+    config.available_features.add('aarch64')
+
+# Data layout mangling mode based on target triple
+if 'windows' in triple or 'mingw' in triple or 'cygwin' in triple:
+    config.substitutions.append((r'%data_layout_mangling', 'w'))
+elif 'darwin' in triple or 'macos' in triple or 'ios' in triple:
+    config.substitutions.append((r'%data_layout_mangling', 'o'))
+else:
+    config.substitutions.append((r'%data_layout_mangling', 'e'))
+
 # Platform features for REQUIRES/UNSUPPORTED directives
 if sys.platform == 'win32':
     config.available_features.add('system-windows')

@@ -1,5 +1,8 @@
-// UNSUPPORTED: system-windows
-// RUN: %reussir-opt %s \
+// REQUIRES: x86_64
+// RUN: sed -e 's/m:e/m:%data_layout_mangling/' \
+// RUN:     -e 's/llvm.data_layout/llvm.target_triple = "%target_triple", llvm.data_layout/' \
+// RUN:     %s > %t_native.mlir
+// RUN: %reussir-opt %t_native.mlir \
 // RUN:   --reussir-lowering-scf-ops \
 // RUN:   --convert-scf-to-cf \
 // RUN:   --reussir-lowering-basic-ops | \

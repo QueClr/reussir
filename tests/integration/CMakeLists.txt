@@ -31,6 +31,16 @@ else()
   set(rpath_flag "-Wl,-rpath,${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
 endif()
 
+# Determine the native target triple from LLVM
+if(DEFINED LLVM_HOST_TRIPLE)
+  set(REUSSIR_TARGET_TRIPLE ${LLVM_HOST_TRIPLE})
+elseif(DEFINED LLVM_DEFAULT_TARGET_TRIPLE)
+  set(REUSSIR_TARGET_TRIPLE ${LLVM_DEFAULT_TARGET_TRIPLE})
+else()
+  set(REUSSIR_TARGET_TRIPLE ${LLVM_TARGET_TRIPLE})
+endif()
+message(STATUS "Target triple for tests: ${REUSSIR_TARGET_TRIPLE}")
+
 set(rustc_path ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/rustc${CMAKE_EXECUTABLE_SUFFIX})
 set(reussir_elab_path ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/reussir-elab${CMAKE_EXECUTABLE_SUFFIX})
 set(reussir_compiler_path ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/reussir-compiler${CMAKE_EXECUTABLE_SUFFIX})
