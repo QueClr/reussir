@@ -1937,21 +1937,22 @@ struct ReussirFuncOpConversionPattern
 
     // Build new parameter list with ABI adjustments (sret + byval)
     llvm::SmallVector<mlir::Type> newParams;
-    llvm::SmallVector<bool> isByValParam; // Tracks if the param at index i (in
-                                          // newParams) is a byval ptr
+    llvm::SmallVector<mlir::Type>
+        isByValParam; // Tracks if the param at index i (in
+                      // newParams) is a byval ptr
 
     if (useSret) {
       newParams.push_back(ptrTy); // sret pointer
-      isByValParam.push_back(false);
+      isByValParam.push_back(nullptr);
     }
 
     for (auto paramTy : origFnTy.getParams()) {
       if (needsWindowsByVal(*converter, paramTy)) {
         newParams.push_back(ptrTy);
-        isByValParam.push_back(true);
+        isByValParam.push_back(paramTy);
       } else {
         newParams.push_back(paramTy);
-        isByValParam.push_back(false);
+        isByValParam.push_back(nullptr);
       }
     }
 
@@ -2008,8 +2009,11 @@ struct ReussirFuncOpConversionPattern
 
     // Set noundef on byval args (simplified approximation of Clang behavior)
     for (unsigned i = 0; i < isByValParam.size(); ++i)
-      if (isByValParam[i])
+      if (isByValParam[i]) {
         newFuncOp.setArgAttr(i, "llvm.noundef", rewriter.getUnitAttr());
+        newFuncOp.setArgAttr(i, "llvm.byval",
+                             mlir::TypeAttr::get(isByValParam[i]));
+      }
 
     // Copy symbol visibility
     newFuncOp.setSymVisibility(funcOp.getSymVisibility());
@@ -2087,53 +2091,50 @@ struct ReussirFuncOpConversionPattern
     rewriter.applySignatureConversion(&newFuncOp.getBody().front(),
                                       bodySignature);
 
-    // Now prepend the trampoline block
-    mlir::Block *trampoline =
-        rewriter.createBlock(&newFuncOp.getBody(), newFuncOp.getBody().begin(),
-                             newFuncOp.getFunctionType().getParams(),
-                             llvm::SmallVector<mlir::Location>(
-                                 newFuncOp.getNumArguments(), funcOp.getLoc()));
+    bool needsTrampoline = useSret;
+    for (auto t : isByValParam)
+      if (t)
+        needsTrampoline = true;
 
-    // In the trampoline, we have arguments matching the function signature
-    // (ptrs). We need to load them and jump to the original entry block (which
-    // expects structs).
+    if (needsTrampoline) {
+      // Now prepend the trampoline block
+      mlir::Block *trampoline = rewriter.createBlock(
+          &newFuncOp.getBody(), newFuncOp.getBody().begin(),
+          newFuncOp.getFunctionType().getParams(),
+          llvm::SmallVector<mlir::Location>(newFuncOp.getNumArguments(),
+                                            funcOp.getLoc()));
 
-    llvm::SmallVector<mlir::Value> jumpArgs;
+      // In the trampoline, we have arguments matching the function signature
+      // (ptrs). We need to load them and jump to the original entry block
+      // (which expects structs).
 
-    // Handle sret if present
-    if (useSret) {
-      // The sret pointer is argument 0 of proper function.
-      // But the body block (original) does NOT expect it as an argument
-      // (because we used standard signature conversion).
-      // However, ReussirReturnOp needs it.
-      // Since 'trampoline' dominates the body, return ops can find it via
-      // getArgument(0).
-    }
+      llvm::SmallVector<mlir::Value> jumpArgs;
 
-    // Process other args
-    unsigned origParamIdx = 0;
-    for (unsigned i = 0; i < isByValParam.size(); ++i) {
-      if (useSret && i == 0)
-        continue; // Skip sret param
+      // Process other args
+      unsigned origParamIdx = 0;
+      for (unsigned i = 0; i < isByValParam.size(); ++i) {
+        if (useSret && i == 0)
+          continue; // Skip sret param
 
-      mlir::Value trampolineArg = trampoline->getArgument(i);
-      if (isByValParam[i]) {
-        // It is a pointer. Load the value.
-        mlir::Type structType = origFnTy.getParams()[origParamIdx];
-        auto loaded = rewriter.create<mlir::LLVM::LoadOp>(
-            funcOp.getLoc(), structType, trampolineArg);
-        jumpArgs.push_back(loaded);
-      } else {
-        // Pass through
-        jumpArgs.push_back(trampolineArg);
+        mlir::Value trampolineArg = trampoline->getArgument(i);
+        if (isByValParam[i]) {
+          // It is a pointer. Load the value.
+          mlir::Type structType = origFnTy.getParams()[origParamIdx];
+          auto loaded = rewriter.create<mlir::LLVM::LoadOp>(
+              funcOp.getLoc(), structType, trampolineArg);
+          jumpArgs.push_back(loaded);
+        } else {
+          // Pass through
+          jumpArgs.push_back(trampolineArg);
+        }
+        origParamIdx++;
       }
-      origParamIdx++;
-    }
 
-    // Branch to the original entry block (now the second block)
-    auto originalEntryBlock = std::next(newFuncOp.getBody().begin());
-    rewriter.create<mlir::LLVM::BrOp>(funcOp.getLoc(), jumpArgs,
-                                      &*originalEntryBlock);
+      // Branch to the original entry block (now the second block)
+      auto originalEntryBlock = std::next(newFuncOp.getBody().begin());
+      rewriter.create<mlir::LLVM::BrOp>(funcOp.getLoc(), jumpArgs,
+                                        &*originalEntryBlock);
+    }
 
     rewriter.eraseOp(funcOp);
     return mlir::success();
