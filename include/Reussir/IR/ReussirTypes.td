@@ -572,7 +572,7 @@ def ReussirRcBoxType
     // LLVM type conversion.
     llvm::SmallVector<mlir::Type> getHeaderTypes() const;
     size_t getElementIndex() const { return getHeaderTypes().size(); }
-    // Whether the payload is a dynamic-extent array: the box then carries
+    // Whether the payload is a host dynamic-extent array: the box then carries
     // the full strided-memref encoding in its header —
     // `{ i32 count | index offset | index size[r] | index stride[r] | payload }`
     // (padding per the data layout; the two descriptor pointers are derived
@@ -642,23 +642,69 @@ def ReussirArrayType
     : ReussirType<"Array", "array",
                   [DeclareTypeInterfaceMethods<DataLayoutTypeInterface>,
                    ShapedTypeInterface]> {
-  let summary = "Reussir fixed-size inline array type";
+  let summary = "Reussir array type";
   let description = [{
-    `reussir.array` represents a statically shaped inline array payload.
-    This is the payload type wrapped by `!reussir.rc<...>` for managed arrays.
+    `reussir.array` is a complex type always managed by `!reussir.rc<...>`.
+    Dimensions may be static or dynamic (`?`), with dynamic extents supplied
+    at runtime. Arrays use host storage by default; a `#reussir.target`
+    annotation selects PjRt device storage and specifies logical devices,
+    sharding, memory kind, and layout.
+
+    Layouts within a non-regional RC box (alignment padding omitted):
+
+    ```text
+    Static host array
+    ┌─────────────────────────────────────┐
+    │ refcount: i32                       │ RC header
+    ├─────────────────────────────────────┤
+    │ elements: T[product(shape)]         │ inline payload
+    └─────────────────────────────────────┘
+
+    Dynamic host array (rank r)
+    ┌─────────────────────────────────────┐
+    │ refcount: i32                       │ RC header
+    │ offset: index                       │
+    │ sizes: index[r]                     │ all dimensions
+    │ strides: index[r]                   │
+    ├─────────────────────────────────────┤
+    │ elements: T[product(sizes)]         │ inline payload
+    └─────────────────────────────────────┘
+
+    Target array (d devices, k dynamic dimensions)
+    ┌─────────────────────────────────────┐
+    │ refcount: i32                       │ RC header
+    ├─────────────────────────────────────┤
+    │ allocation handles: ptr[d]          │──→ PjRt device storage
+    │ offset: index                       │ descriptor payload
+    │ dynamic extents: index[k]           │ omitted for static shape
+    └─────────────────────────────────────┘
+    ```
+
+    A single-device target stores one pointer instead of a pointer array.
+    Static target extents and placement remain in the type.
   }];
   let parameters = (ins ArrayRefParameter<"int64_t">:$shape,
-      "mlir::Type":$eleTy);
+      "mlir::Type":$eleTy,
+      OptionalParameter<"::reussir::TargetAttr">:$target);
+  let builders = [TypeBuilder<(ins "llvm::ArrayRef<int64_t>":$shape,
+                                  "mlir::Type":$eleTy), [{
+    return $_get($_ctxt, shape, eleTy, ::reussir::TargetAttr{});
+  }]>];
   let hasCustomAssemblyFormat = 1;
   let genVerifyDecl = 1;
   let extraClassDeclaration = [{
     mlir::Type getElementType() const { return getEleTy(); }
     bool hasRank() const { return true; }
     bool hasDynamicShape() const { return !hasStaticShape(); }
+    bool hasTargetAttr() const { return static_cast<bool>(getTarget()); }
     ArrayType cloneWith(std::optional<llvm::ArrayRef<int64_t>> shape,
                         mlir::Type elementType) const;
     size_t getRank() const { return getShape().size(); }
     ArrayType dropFront() const;
+    static constexpr unsigned ALLOCATION_INDEX = 0;
+    static constexpr unsigned OFFSET_INDEX = 1;
+    static constexpr unsigned DYNAMIC_EXTENTS_INDEX = 2;
+    llvm::SmallVector<mlir::Type> getDescriptorTypes() const;
   }];
 }
 

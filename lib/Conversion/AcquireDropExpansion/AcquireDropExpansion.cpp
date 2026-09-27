@@ -113,6 +113,9 @@ private:
 
   mlir::LogicalResult rewriteDropArray(ArrayType arrayType, ReussirRefDropOp op,
                                        mlir::PatternRewriter &rewriter) const {
+    // Device handle release is lowered with basic ops.
+    if (arrayType.getTarget())
+      return mlir::failure();
     mlir::Value view = ReussirArrayViewOp::create(
                            rewriter, op.getLoc(),
                            getArrayViewMemRefType(arrayType), op.getRef())
@@ -136,8 +139,10 @@ private:
   // FFI objects release through their foreign cleanup hook and closures
   // through their vtable, so neither can hand its box out as a token.
   static bool decMayProduceToken(RcType rcType) {
+    auto arrayType = llvm::dyn_cast<ArrayType>(rcType.getElementType());
     return rcType.getCapability() == Capability::shared &&
-           !llvm::isa<FFIObjectType, ClosureType>(rcType.getElementType());
+           !llvm::isa<FFIObjectType, ClosureType>(rcType.getElementType()) &&
+           !(arrayType && arrayType.hasTargetAttr());
   }
 
   mlir::LogicalResult rewriteDropRc(RcType rcType, ReussirRefDropOp op,

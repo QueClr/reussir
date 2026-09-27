@@ -3948,7 +3948,7 @@ struct ReussirConvertToLLVMPatternInterface
         ReussirPanicOp, ReussirExpectOp, ReussirCctxEmptyOp,
         ReussirCctxExtendOp, ReussirCctxApplyOp, ReussirTokenAllocOp,
         ReussirTokenFreeOp, ReussirTokenReinterpretOp, ReussirTokenReallocOp,
-        ReussirRefLoadOp, ReussirRefStoreOp, ReussirRefSpilledOp,
+        ReussirRefLoadOp, ReussirRefStoreOp, ReussirRefSpilledOp, ReussirRefDropOp,
         ReussirRefToMemrefOp, ReussirRefFromMemrefOp, ReussirRefDiffOp,
         ReussirRefCmpOp, ReussirRefMemcpyOp, ReussirNullableCheckOp,
         ReussirNullableCreateOp, ReussirNullableCoerceOp, ReussirRcIncOp,
@@ -3956,7 +3956,7 @@ struct ReussirConvertToLLVMPatternInterface
         ReussirRcTaggedOp, ReussirRcDecOp, ReussirRcBorrowOp,
         ReussirRcIsUniqueOp, ReussirRcAssumeUniqueOp, ReussirRecordCompoundOp,
         ReussirRecordVariantOp, ReussirRefProjectOp, ReussirArrayProjectOp,
-        ReussirArrayViewOp, ReussirArrayInstantiateOp,
+        ReussirArrayViewOp, ReussirArrayCreateOp, ReussirArrayInstantiateOp,
         ReussirArrayFillPatternOp, ReussirRecordTagOp, ReussirRecordExtractOp,
         ReussirRecordCoerceOp, ReussirRegionVTableOp, ReussirRcFreezeOp,
         ReussirRegionCleanupOp, ReussirRegionCreateOp, ReussirRcReinterpretOp,
@@ -4082,6 +4082,7 @@ void registerReussirBasicOpsLoweringInterface(mlir::DialectRegistry &registry) {
 
 void populateBasicOpsLoweringToLLVMConversionPatterns(
     mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns) {
+  populateTargetArrayLoweringPatterns(converter, patterns);
   patterns.add<
       ReussirExpectConversionPattern, ReussirCctxEmptyConversionPattern,
       ReussirCctxExtendConversionPattern, ReussirCctxApplyConversionPattern,

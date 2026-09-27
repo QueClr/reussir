@@ -2292,7 +2292,11 @@ struct ConvertToSTDPass
     });
 
     target.addDynamicallyLegalOp<ReussirArrayCreateOp>(
-        [&](ReussirArrayCreateOp) { return !expandArrays; });
+        [&](ReussirArrayCreateOp op) {
+          return !expandArrays ||
+                 llvm::cast<ArrayType>(op.getRcPtr().getType().getElementType())
+                     .hasTargetAttr();
+        });
     target.addDynamicallyLegalOp<ReussirScfYieldOp>([&](ReussirScfYieldOp op) {
       return !expandArrays &&
              llvm::isa<ReussirArrayCreateOp>(op->getParentOp());
