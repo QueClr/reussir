@@ -43,6 +43,7 @@
 #include "Reussir/IR/ReussirEnumAttrs.h"
 #include "Reussir/IR/ReussirOps.h"
 #include "Reussir/IR/ReussirTypes.h"
+#include "Reussir/Transformation/SpecialPointerTag.h"
 
 namespace reussir {
 
@@ -54,6 +55,39 @@ namespace reussir {
 //===----------------------------------------------------------------------===//
 
 namespace {
+
+// Under the special-pointer-tag scheme a nullary constructor is an immediate
+// pointing at a static per-tag dummy box. Under TBI, increments of an
+// immediate land on the dummy's 32-bit count (the LLVM lowering keeps rc.inc
+// unguarded), so after 2^32 references the count wraps and a decrement reads
+// 1. The decrement must then not take its unique branch (the dummy is not
+// heap memory): no release, no token. Returns the nullary tags the value may be the
+// immediate of, to be tested in the branch condition: none for types without
+// immediates, none under the immortal encoding (rc.inc steers its store away
+// from the dummy, so the count never reaches 1), and none for a destructuring
+// decrement of an arm with members.
+llvm::SmallVector<int64_t> immediateTagsToGuard(ReussirRcDecOp op) {
+  RcType type = op.getRcPtr().getType();
+  auto module = op->getParentOfType<mlir::ModuleOp>();
+  if (!module)
+    return {};
+  auto encoding = module->getAttrOfType<mlir::StringAttr>(kSpecialPtrTagAttr);
+  if (!encoding || encoding.getValue() == kSpecialPtrTagImmortal ||
+      !type.mayCarrySpecialPointerTag())
+    return {};
+  auto variant = llvm::cast<RecordType>(type.getElementType());
+  llvm::SmallVector<int64_t> tags;
+  if (op.isVariantDestructuring()) {
+    size_t tag = op.getDestructureTagAttr().getValue().getZExtValue();
+    if (variant.isNullaryArm(tag))
+      tags.push_back(static_cast<int64_t>(tag));
+    return tags;
+  }
+  for (size_t tag = 0, n = variant.getMembers().size(); tag < n; ++tag)
+    if (variant.isNullaryArm(tag))
+      tags.push_back(static_cast<int64_t>(tag));
+  return tags;
+}
 
 struct RcDecrementExpansionPattern
     : public mlir::OpRewritePattern<ReussirRcDecOp> {
@@ -85,8 +119,32 @@ struct RcDecrementExpansionPattern
     auto isOne = mlir::arith::CmpIOp::create(
         rewriter, op.getLoc(), mlir::arith::CmpIPredicate::eq, prevRcCount,
         mlir::arith::ConstantIndexOp::create(rewriter, op.getLoc(), 1));
+    // An immediate whose wrapped count reads 1 must take the shared branch:
+    // it is not heap memory, so it is neither freed nor turned into a token
+    // (the shared branch's rc.set skips immediates). The test joins the
+    // condition, so the unique branch keeps its usual shape.
+    mlir::Value unique = isOne.getResult();
+    if (llvm::SmallVector<int64_t> tags = immediateTagsToGuard(op);
+        !tags.empty()) {
+      mlir::Value isImmediate;
+      for (int64_t tag : tags) {
+        mlir::Value same = ReussirRcCompareImmortalOp::create(
+            rewriter, op.getLoc(), rewriter.getI1Type(), op.getRcPtr(),
+            rewriter.getIndexAttr(tag));
+        isImmediate =
+            isImmediate ? mlir::arith::OrIOp::create(rewriter, op.getLoc(),
+                                                     isImmediate, same)
+                              .getResult()
+                        : same;
+      }
+      mlir::Value notImmediate = mlir::arith::XOrIOp::create(
+          rewriter, op.getLoc(), isImmediate,
+          mlir::arith::ConstantIntOp::create(rewriter, op.getLoc(), 1, 1));
+      unique = mlir::arith::AndIOp::create(rewriter, op.getLoc(), unique,
+                                           notImmediate);
+    }
     auto likelyUnique =
-        ReussirExpectOp::create(rewriter, op.getLoc(), isOne.getResult(), true);
+        ReussirExpectOp::create(rewriter, op.getLoc(), unique, true);
     auto ifOp =
         mlir::scf::IfOp::create(rewriter, op.getLoc(), op->getResultTypes(),
                                 likelyUnique.getLikely(), true, true);

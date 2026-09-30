@@ -69,4 +69,22 @@ module @test attributes { reussir.special_ptr_tag = "tbi", dlti.dl_spec = #dlti.
     reussir.rc.set(%rc : !rclist, %v : index)
     return
   }
+
+  // The increment stays a plain load/add/store, landing on the dummy for an
+  // immediate. Its count then grows and wraps, so `old >= 1` is only assumed
+  // for real boxes (zero top byte).
+  // CHECK-LABEL: define void @inc(ptr %0)
+  // CHECK: %[[OLD:.+]] = load i32, ptr %[[CNTP:.+]], align 4
+  // CHECK: %[[NEW:.+]] = add i32 %[[OLD]], 1
+  // CHECK: store i32 %[[NEW]], ptr %[[CNTP]]
+  // CHECK: %[[GE:.+]] = icmp uge i32 %[[OLD]], 1
+  // CHECK: %[[INT:.+]] = ptrtoint ptr %0 to i64
+  // CHECK: %[[TOP:.+]] = lshr i64 %[[INT]], 56
+  // CHECK: %[[ISTAG:.+]] = icmp ne i64 %[[TOP]], 0
+  // CHECK: %[[OK:.+]] = or i1 %[[GE]], %[[ISTAG]]
+  // CHECK: call void @llvm.assume(i1 %[[OK]])
+  func.func @inc(%rc: !rclist) {
+    reussir.rc.inc (%rc : !rclist)
+    return
+  }
 }
