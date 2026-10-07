@@ -1,0 +1,26 @@
+// UNSUPPORTED: darwin
+// A texture body may contain a `[:` that does not start a placeholder: a
+// Rust byte string such as `b"a[:b"`, or a type that starts with an absolute
+// path (`[::std::ffi::c_char; 4]`). Without a closing `:]`, the `[:` and all
+// the text after it must reach rustc as written.
+
+// RUN: %rrc %s -o %t.o --relocation-mode pic
+// RUN: %cc %t.o %S/ffi_unterminated_placeholder_e2e.c -o %t.exe -L%library_path -lreussir_rt %rpath_flag %extra_sys_libs
+// RUN: %t.exe
+
+#[ffi(import)]
+fn unterminated_len() -> u64 [{ b"a[:b".len() as u64 }];
+
+#[ffi(import)]
+fn terminated_later_len() -> u64 [{
+    let s: &[u8] = b"x[:y";
+    let t: &[u8] = b"z:]";
+    (s.len() * 10 + t.len()) as u64
+}];
+
+pub fn main() -> u64 {
+    // 4, and 4 * 10 + 3 = 43 (an unknown `[:...:]` is kept as written).
+    unterminated_len() * 100 + terminated_later_len()
+}
+
+extern "C" trampoline "reussir_main" = main;
