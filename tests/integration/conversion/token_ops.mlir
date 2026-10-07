@@ -35,13 +35,12 @@ module @test attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense
   
   // A realloc lowers to `__reussir_reallocate` followed by an invariant-group
   // launder of the result: an LTO'd allocator fast path may return the
-  // identical pointer, whose stale invariant-group metadata must be stripped;
-  // the ptr-eq assume keeps value propagation across the barrier.
+  // identical pointer, whose stale invariant-group metadata must be stripped.
+  // No ptr-eq assume follows: LLVM would use it to undo the launder.
   // CHECK-LABEL: llvm.func @token_realloc(%arg0: !llvm.ptr) -> !llvm.ptr attributes {sym_visibility = "private"} {
   // CHECK: %[[R:.+]] = llvm.call @__reussir_reallocate(%arg0, {{.*}}) : (!llvm.ptr, [[INDEX_T]], [[INDEX_T]], [[INDEX_T]], [[INDEX_T]]) -> !llvm.ptr
   // CHECK: %[[L:.+]] = llvm.intr.launder.invariant.group %[[R]] : !llvm.ptr
-  // CHECK: %[[EQ:.+]] = llvm.icmp "eq" %[[L]], %[[R]] : !llvm.ptr
-  // CHECK: llvm.intr.assume %[[EQ]] : i1
+  // CHECK-NOT: llvm.intr.assume
   // CHECK: llvm.return %[[L]] : !llvm.ptr
   // CHECK: }
   func.func private @token_realloc(%token: !reussir.token<align: 8, size: 8>) -> 
