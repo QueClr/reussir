@@ -99,6 +99,24 @@ std::optional<int64_t> extractedMemberIndex(mlir::Value value,
   return project.getIndex().getSExtValue();
 }
 
+// Whether `op`, between the bound retains and the scrutinee's release,
+// consumes a retained member (any use but a borrow or a retain). A fused
+// retain's reference is replaced by the one the scrutinee's box transfers at
+// its release, so the retained value must still be unused there. A member
+// consumed before (e.g. built into a cell that is then released) would give
+// away a reference that no longer exists at the release, and drop the
+// member's count below its holders, the scrutinee's box among them.
+// Releases of other values are harmless: each drops a reference its holder
+// owns, and the scrutinee's box keeps every member alive until its release.
+bool consumesFusedMember(mlir::Operation &op,
+                         llvm::ArrayRef<ReussirRcIncOp> members) {
+  if (llvm::isa<ReussirRcBorrowOp, ReussirRcIncOp>(op))
+    return false;
+  return llvm::any_of(members, [&](ReussirRcIncOp inc) {
+    return llvm::is_contained(op.getOperands(), inc.getRcPtr());
+  });
+}
+
 // Fuse one arm: find the scrutinee's release, collect the bound retains
 // before it, and rewrite. Returns whether the arm was fused.
 bool fuseArm(mlir::Region &region, int64_t tag,
@@ -113,6 +131,7 @@ bool fuseArm(mlir::Region &region, int64_t tag,
   // touches the scrutinee (or is opaque) aborts.
   ReussirRcDecOp dec;
   llvm::SmallVector<ReussirRcIncOp> boundIncs;
+  llvm::SmallDenseSet<int64_t> boundIndices;
   for (mlir::Operation &op : region.front()) {
     if (auto candidate = llvm::dyn_cast<ReussirRcDecOp>(op)) {
       if (candidate.getRcPtr() == scrutinee) {
@@ -126,10 +145,14 @@ bool fuseArm(mlir::Region &region, int64_t tag,
       continue;
     }
     if (auto inc = llvm::dyn_cast<ReussirRcIncOp>(op)) {
-      if (extractedMemberIndex(inc.getRcPtr(), payloadRef)) {
+      if (auto index = extractedMemberIndex(inc.getRcPtr(), payloadRef)) {
         if (!inc.isSingleAcquire())
           return false;
-        boundIncs.push_back(inc);
+        // The box owns one reference per member, so only one retain per
+        // member can be replaced by the transferred owner; a further retain
+        // of the same member is a real copy and must stay.
+        if (boundIndices.insert(*index).second)
+          boundIncs.push_back(inc);
       }
       continue;
     }
@@ -145,6 +168,14 @@ bool fuseArm(mlir::Region &region, int64_t tag,
     return false;
   if (dec.getNullableToken() && !dec.getNullableToken().use_empty())
     return false;
+  // A bound member handed to anything before the release no longer holds
+  // the reference its retain provided: do not fuse.
+  for (mlir::Operation &op : region.front()) {
+    if (&op == dec.getOperation())
+      break;
+    if (consumesFusedMember(op, boundIncs))
+      return false;
+  }
 
   llvm::SmallVector<int64_t> bound;
   for (ReussirRcIncOp inc : boundIncs)

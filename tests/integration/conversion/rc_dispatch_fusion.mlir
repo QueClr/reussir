@@ -85,4 +85,69 @@ module @test attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<
     }
     return %r : !rclist
   }
+
+  // A member used twice is retained twice before the release. The box owns
+  // one reference to it, so only one retain is fused away and the member is
+  // bound once; the other retain is a real copy and stays.
+  // FUSE-LABEL: func.func @take_twice
+  // FUSE: reussir.rc.inc(
+  // FUSE-NOT: reussir.rc.inc
+  // FUSE: reussir.rc.dec(%arg0 : {{.+}}) : {{.+}}boundMembers = array<i64: 1>, destructureTag = 0 : index}
+  // The label ends the CANCEL checks of @probe above.
+  // CANCEL-LABEL: func.func @take_twice
+  func.func private @pair(!rclist, !rclist) -> !rclist
+  func.func @take_twice(%l: !rclist) -> !rclist {
+    %ref = reussir.rc.borrow (%l : !rclist) : !reussir.ref<!listty>
+    %r = reussir.record.dispatch (%ref : !reussir.ref<!listty>) -> !rclist {
+      [0] -> {
+        ^bb0(%cons: !reussir.ref<!consty>):
+        %slot = reussir.ref.project (%cons : !reussir.ref<!consty>) [1] : !reussir.ref<!rclist>
+        %tail = reussir.ref.load (%slot : !reussir.ref<!rclist>) : !rclist
+        reussir.rc.inc (%tail : !rclist)
+        reussir.rc.inc (%tail : !rclist)
+        %t = reussir.rc.dec (%l : !rclist) : !reussir.nullable<!tk>
+        %p = func.call @pair(%tail, %tail) : (!rclist, !rclist) -> !rclist
+        reussir.scf.yield %p : !rclist
+      }
+      [1] -> {
+        ^bb1(%nil: !reussir.ref<!nilty>):
+        reussir.scf.yield %l : !rclist
+      }
+    }
+    return %r : !rclist
+  }
+
+  // A bound member consumed (built into a cell that is released) before the
+  // scrutinee's release: the release of that cell drops the member's count
+  // below its holders if the retain is fused away, so nothing is fused.
+  // FUSE-LABEL: func.func @consume_then_take
+  // FUSE: reussir.rc.inc
+  // FUSE-NOT: boundMembers
+  // FUSE: return
+  func.func @consume_then_take(%l: !rclist) -> !rclist {
+    %ref = reussir.rc.borrow (%l : !rclist) : !reussir.ref<!listty>
+    %r = reussir.record.dispatch (%ref : !reussir.ref<!listty>) -> !rclist {
+      [0] -> {
+        ^bb0(%cons: !reussir.ref<!consty>):
+        %slot = reussir.ref.project (%cons : !reussir.ref<!consty>) [1] : !reussir.ref<!rclist>
+        %tail = reussir.ref.load (%slot : !reussir.ref<!rclist>) : !rclist
+        reussir.rc.inc (%tail : !rclist)
+        %k = arith.constant 0 : i64
+        %v = reussir.record.compound (%k, %tail : i64, !rclist) : !consty
+        %vv = reussir.record.variant [0] (%v : !consty) : !listty
+        %z = reussir.rc.create value(%vv : !listty) : !rclist
+        %tz = reussir.rc.dec (%z : !rclist) : !reussir.nullable<!tk>
+        %t = reussir.rc.dec (%l : !rclist) : !reussir.nullable<!tk>
+        %n = reussir.record.compound : !nilty
+        %nv = reussir.record.variant [1] (%n : !nilty) : !listty
+        %nil = reussir.rc.create value(%nv : !listty) : !rclist
+        reussir.scf.yield %nil : !rclist
+      }
+      [1] -> {
+        ^bb1(%nil: !reussir.ref<!nilty>):
+        reussir.scf.yield %l : !rclist
+      }
+    }
+    return %r : !rclist
+  }
 }
