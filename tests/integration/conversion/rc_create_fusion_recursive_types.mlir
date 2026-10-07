@@ -1,11 +1,10 @@
 // RUN: %reussir-opt %s --reussir-rc-create-fusion | %FileCheck %s
 
-// Copy avoidance compares the reused cell's payload with the new one
-// structurally. Two distinct recursive records with the same shape (a user
-// list and the standard one) refer back to themselves, so the comparison of
-// their recursive members must be coinductive: a pair already under
-// comparison is assumed equal instead of being unfolded again (unfolding
-// never terminates).
+// Copy avoidance for a cell of one recursive record reused for another. The
+// records refer back to themselves (a user list and the standard one). The
+// pass compares only the type and the byte offset of the field it skips, not
+// the member types recursively, so it stops, and a recursive member before
+// the field does not matter.
 
 !mylist_ = !reussir.record<variant "MyList" incomplete>
 !mycons = !reussir.record<compound "MyList::Cons" [value] {!mylist_, i64}>
@@ -93,7 +92,8 @@ module {
 // CHECK: "reussir.rc.create_variant"
 // CHECK-SAME: skipFields = array<i64: 1>
 
+// Other's Nil arm differs from List's, but the i64 head is at payload offset 8
+// in both Cons arms, so its store is skipped.
 // CHECK-LABEL: func.func @other_to_list
 // CHECK: "reussir.rc.create_variant"
-// CHECK-NOT: skipFields
-// CHECK: return
+// CHECK-SAME: skipFields = array<i64: 1>

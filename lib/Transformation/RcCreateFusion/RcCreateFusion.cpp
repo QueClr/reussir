@@ -17,11 +17,12 @@
 #include "Reussir/IR/ReussirOps.h"
 #include "Reussir/IR/ReussirTypes.h"
 
-#include <llvm/ADT/DenseSet.h>
 #include <llvm/ADT/SmallVector.h>
+#include <llvm/Support/Alignment.h>
 #include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/PatternMatch.h>
+#include <mlir/Interfaces/DataLayoutInterfaces.h>
 #include <mlir/Pass/Pass.h>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
@@ -57,62 +58,6 @@ mlir::TypedValue<RcType> getReusedRcFromToken(mlir::Value token) {
   return reinterpret.getRcPtr();
 }
 
-// Pairs of record types assumed structurally equal while their members are
-// being compared.
-using AssumedEqualTypes = llvm::DenseSet<std::pair<mlir::Type, mlir::Type>>;
-
-// Record types may be recursive (a member refers back to an enclosing named
-// record), so two distinct names with the same shape — a user list and the
-// standard one — make member-wise recursion unbounded. Compare coinductively:
-// a pair already under comparison is assumed equal. Any mismatch below it
-// makes the whole comparison false, so the assumption only ever closes a
-// cycle of pairs whose members all match.
-bool structurallySameType(mlir::Type lhs, mlir::Type rhs,
-                          AssumedEqualTypes &assumed) {
-  if (lhs == rhs)
-    return true;
-
-  auto lhsRecord = llvm::dyn_cast<RecordType>(lhs);
-  auto rhsRecord = llvm::dyn_cast<RecordType>(rhs);
-  if (lhsRecord || rhsRecord) {
-    if (!lhsRecord || !rhsRecord)
-      return false;
-    if (!assumed.insert({lhs, rhs}).second)
-      return true;
-    if (lhsRecord.isVariant() != rhsRecord.isVariant())
-      return false;
-    // The default capability decides how a member of this type is stored
-    // (a [value] record inline, a shared or regional one as a pointer), and
-    // `fixed` how a variant box is sized.
-    if (lhsRecord.getDefaultCapability() != rhsRecord.getDefaultCapability())
-      return false;
-    if (lhsRecord.getFixed() != rhsRecord.getFixed())
-      return false;
-    if (lhsRecord.isCompound() != rhsRecord.isCompound())
-      return false;
-    if (lhsRecord.getComplete() != rhsRecord.getComplete())
-      return false;
-    if (lhsRecord.getMembers().size() != rhsRecord.getMembers().size())
-      return false;
-    for (auto [lhsMember, rhsMember, lhsField, rhsField] : llvm::zip(
-             lhsRecord.getMembers(), rhsRecord.getMembers(),
-             lhsRecord.getMemberIsField(), rhsRecord.getMemberIsField())) {
-      if (lhsField != rhsField)
-        return false;
-      if (!structurallySameType(lhsMember, rhsMember, assumed))
-        return false;
-    }
-    return true;
-  }
-
-  return false;
-}
-
-bool structurallySameType(mlir::Type lhs, mlir::Type rhs) {
-  AssumedEqualTypes assumed;
-  return structurallySameType(lhs, rhs, assumed);
-}
-
 bool isLoadFromCompoundField(mlir::Value value,
                              mlir::TypedValue<RcType> sourceRc,
                              int64_t fieldIndex) {
@@ -131,34 +76,98 @@ bool isLoadFromCompoundField(mlir::Value value,
   return borrow && borrow.getRcPtr() == sourceRc;
 }
 
-bool hasCompatibleFieldPrefix(RecordType sourcePayloadType,
-                              RecordType targetPayloadType,
-                              int64_t fieldIndex) {
-  if (!sourcePayloadType || !targetPayloadType)
+// Offset of the arm payloads within a variant record: they follow the
+// header (the fused 8-byte {count slot, tag} word, or the bare tag) at the
+// alignment of the most aligned arm.
+uint64_t getVariantPayloadOffset(RecordType variant,
+                                 const mlir::DataLayout &dataLayout) {
+  uint64_t headerSize = variant.hasFusedHeader()
+                            ? 8
+                            : dataLayout.getTypeSize(variant.getTagType());
+  return llvm::alignTo(
+      headerSize, variant.getElementRegionLayoutInfo(dataLayout).alignment);
+}
+
+// A reused cell already holds the new arm's field i if the old arm's field i
+// has the same type and sits at the same byte offset from the start of the
+// box. The arms may belong to different records, and their other members
+// may differ.
+bool sameVariantField(RcType sourceRc, RcType targetRc,
+                      RecordType sourcePayloadType,
+                      RecordType targetPayloadType, int64_t fieldIndex,
+                      const mlir::DataLayout &dataLayout) {
+  if (!sourcePayloadType || !targetPayloadType ||
+      !sourcePayloadType.isCompound() || !targetPayloadType.isCompound())
     return false;
-  if (!sourcePayloadType.isCompound() || !targetPayloadType.isCompound())
-    return false;
-  if (fieldIndex < 0)
-    return false;
-  if (static_cast<size_t>(fieldIndex) >=
+  if (fieldIndex < 0 ||
+      static_cast<size_t>(fieldIndex) >=
           sourcePayloadType.getMembers().size() ||
       static_cast<size_t>(fieldIndex) >= targetPayloadType.getMembers().size())
     return false;
+  if (sourcePayloadType.getMemberIsField()[fieldIndex] !=
+          targetPayloadType.getMemberIsField()[fieldIndex] ||
+      sourcePayloadType.getMembers()[fieldIndex] !=
+          targetPayloadType.getMembers()[fieldIndex])
+    return false;
 
-  for (int64_t index = 0; index <= fieldIndex; ++index) {
-    if (sourcePayloadType.getMemberIsField()[index] !=
-        targetPayloadType.getMemberIsField()[index])
-      return false;
-    if (!structurallySameType(sourcePayloadType.getMembers()[index],
-                              targetPayloadType.getMembers()[index]))
+  // Without packing, the type converter can widen a member to fill the
+  // padding before the next member, and the wider integer can move the
+  // member itself. So the LLVM offset of member i also depends on members
+  // 0..i-1 and on the alignment of member i+1. Then those must agree too.
+  // With packing, members are sorted by alignment. If the size of each
+  // member is a multiple of its alignment, as for every type the frontend
+  // makes, no padding comes between two members, and the converter widens no
+  // member.
+  if (auto *dialect =
+          sourcePayloadType.getContext()->getLoadedDialect<ReussirDialect>();
+      dialect && !dialect->getPackRecordMembers()) {
+    mlir::MLIRContext *context = sourcePayloadType.getContext();
+    auto storageType = [&](RecordType record, int64_t index) {
+      return memberStorageType(context, record.getMembers()[index],
+                               record.getMemberIsField()[index]);
+    };
+    for (int64_t index = 0; index < fieldIndex; ++index)
+      if (sourcePayloadType.getMemberIsField()[index] !=
+              targetPayloadType.getMemberIsField()[index] ||
+          storageType(sourcePayloadType, index) !=
+              storageType(targetPayloadType, index))
+        return false;
+    auto nextAlignment = [&](RecordType record) -> uint64_t {
+      if (static_cast<size_t>(fieldIndex + 1) >= record.getMembers().size())
+        return 1;
+      return dataLayout.getTypeABIAlignment(
+          storageType(record, fieldIndex + 1));
+    };
+    if (nextAlignment(sourcePayloadType) != nextAlignment(targetPayloadType))
       return false;
   }
-  return true;
+
+  RcBoxType sourceBox = sourceRc.getInnerBoxType();
+  RcBoxType targetBox = targetRc.getInnerBoxType();
+  if (sourceBox.isHeaderFused() != targetBox.isHeaderFused() ||
+      sourceBox.getHeaderTypes() != targetBox.getHeaderTypes() ||
+      dataLayout.getTypeABIAlignment(sourceBox.getElementType()) !=
+          dataLayout.getTypeABIAlignment(targetBox.getElementType()))
+    return false;
+
+  auto sourceVariant = llvm::dyn_cast<RecordType>(sourceBox.getElementType());
+  auto targetVariant = llvm::dyn_cast<RecordType>(targetBox.getElementType());
+  if (!sourceVariant || !targetVariant || !sourceVariant.isVariant() ||
+      !targetVariant.isVariant())
+    return false;
+  if (getVariantPayloadOffset(sourceVariant, dataLayout) !=
+      getVariantPayloadOffset(targetVariant, dataLayout))
+    return false;
+
+  return sourcePayloadType.getMemberOffset(dataLayout, fieldIndex) ==
+         targetPayloadType.getMemberOffset(dataLayout, fieldIndex);
 }
 
 bool isLoadFromVariantField(mlir::Value value,
                             mlir::TypedValue<RcType> sourceRc,
-                            mlir::Type targetPayloadType, int64_t fieldIndex) {
+                            mlir::TypedValue<RcType> targetRc,
+                            mlir::Type targetPayloadType, int64_t fieldIndex,
+                            const mlir::DataLayout &dataLayout) {
   auto load =
       llvm::dyn_cast_if_present<ReussirRefLoadOp>(value.getDefiningOp());
   if (!load)
@@ -177,13 +186,14 @@ bool isLoadFromVariantField(mlir::Value value,
   auto sourcePayloadType = llvm::dyn_cast<RecordType>(
       coerce.getCoerced().getType().getElementType());
   auto targetPayloadRecord = llvm::dyn_cast<RecordType>(targetPayloadType);
-  if (!hasCompatibleFieldPrefix(sourcePayloadType, targetPayloadRecord,
-                                fieldIndex))
-    return false;
 
   auto borrow = llvm::dyn_cast_if_present<ReussirRcBorrowOp>(
       coerce.getVariant().getDefiningOp());
-  return borrow && borrow.getRcPtr() == sourceRc;
+  if (!borrow || borrow.getRcPtr() != sourceRc)
+    return false;
+  return sameVariantField(sourceRc.getType(), targetRc.getType(),
+                          sourcePayloadType, targetPayloadRecord, fieldIndex,
+                          dataLayout);
 }
 
 void markCompoundAvoidedCopies(ReussirRcCreateCompoundOp op) {
@@ -209,7 +219,8 @@ void markCompoundAvoidedCopies(ReussirRcCreateCompoundOp op) {
                 mlir::DenseI64ArrayAttr::get(op.getContext(), skippedFields));
 }
 
-void markVariantAvoidedCopies(ReussirRcCreateVariantOp op) {
+void markVariantAvoidedCopies(ReussirRcCreateVariantOp op,
+                              const mlir::DataLayout &dataLayout) {
   if (op.getValue())
     return;
 
@@ -222,7 +233,8 @@ void markVariantAvoidedCopies(ReussirRcCreateVariantOp op) {
       op.getRecordType().getMembers()[op.getTag().getZExtValue()];
   llvm::SmallVector<int64_t> skippedFields;
   for (auto [index, field] : llvm::enumerate(op.getFields()))
-    if (isLoadFromVariantField(field, sourceRc, payloadType, index))
+    if (isLoadFromVariantField(field, sourceRc, op.getRcPtr(), payloadType,
+                               index, dataLayout))
       skippedFields.push_back(static_cast<int64_t>(index));
 
   if (!skippedFields.empty())
@@ -282,8 +294,10 @@ struct RcCreateFusionPass
       signalPassFailure();
     getOperation().walk(
         [](ReussirRcCreateCompoundOp op) { markCompoundAvoidedCopies(op); });
-    getOperation().walk(
-        [](ReussirRcCreateVariantOp op) { markVariantAvoidedCopies(op); });
+    mlir::DataLayout dataLayout = mlir::DataLayout::closest(getOperation());
+    getOperation().walk([&](ReussirRcCreateVariantOp op) {
+      markVariantAvoidedCopies(op, dataLayout);
+    });
   }
 };
 
