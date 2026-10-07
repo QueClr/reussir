@@ -752,14 +752,11 @@ struct ReussirTokenReallocConversionPattern
     }
     // Launder the result. The reallocated block holds a freshly constructed
     // object; an LTO'd allocator fast path may return the identical pointer,
-    // so its stale invariant-group metadata must be stripped. The ptr-eq
-    // assume keeps alias/value propagation across the barrier (see the token
-    // launder lowering for the analysis).
+    // so its stale invariant-group metadata must be stripped. No ptr-eq
+    // assume: it would let LLVM undo the launder (see the token launder
+    // lowering).
     mlir::Value laundered =
         mlir::LLVM::LaunderInvariantGroupOp::create(rewriter, loc, reallocated);
-    mlir::Value ptrEq = mlir::LLVM::ICmpOp::create(
-        rewriter, loc, mlir::LLVM::ICmpPredicate::eq, laundered, reallocated);
-    mlir::LLVM::AssumeOp::create(rewriter, loc, ptrEq);
     rewriter.replaceOp(op, laundered);
     return mlir::success();
   }
@@ -3673,101 +3670,20 @@ struct ReussirTokenLaunderOpConversionPattern
   mlir::LogicalResult
   matchAndRewrite(ReussirTokenLaunderOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
-    auto newSSA =
-        rewriter.replaceOpWithNewOp<mlir::LLVM::LaunderInvariantGroupOp>(
-            op, adaptor.getToken());
-    /*
-     * Why we emit llvm.assume after token launder (full repro):
-     *
-     * Input IR used for analysis:
-     *
-     *   ; ModuleID = 'caseC_reload_after_store_full.ll'
-     *   source_filename = "caseC_reload_after_store_full.ll"
-     *
-     *   define void @store_reload_invariant(ptr %p) {
-     *   entry:
-     *     %x  = load i64, ptr %p, align 8, !invariant.group !0
-     *     %p8 = getelementptr i8, ptr %p, i64 8
-     *     %y  = load i64, ptr %p8, align 8, !invariant.group !0
-     *
-     *     %q  = call ptr @llvm.launder.invariant.group.p0(ptr %p)
-     *     %eq = icmp eq ptr %q, %p
-     *     call void @llvm.assume(i1 %eq)
-     *
-     *     %q8 = getelementptr i8, ptr %q, i64 8
-     *
-     *     call void @use_i64(i64 %x)
-     *     call void @use_i64(i64 %y)
-     *
-     *     store i64 %x, ptr %q, align 8, !invariant.group !0
-     *     %x_reload = load i64, ptr %q, align 8, !invariant.group !0
-     *     call void @use_i64(i64 %x_reload)
-     *
-     *     %y_plus_1 = add i64 %y, 1
-     *     store i64 %y_plus_1, ptr %q8, align 8, !invariant.group !0
-     *     %y_reload = load i64, ptr %q8, align 8, !invariant.group !0
-     *     call void @use_i64(i64 %y_reload)
-     *     ret void
-     *   }
-     *
-     *   declare ptr @llvm.launder.invariant.group.p0(ptr)
-     *   declare void @llvm.assume(i1 noundef)
-     *   declare void @use_i64(i64)
-     *   !0 = !{}
-     *
-     * opt -S -O3 output with assume:
-     *
-     *   define void @store_reload_invariant(ptr captures(address) %p)
-     *   local_unnamed_addr {
-     *   entry:
-     *     %x = load i64, ptr %p, align 8, !invariant.group !0
-     *     %p8 = getelementptr i8, ptr %p, i64 8
-     *     %y = load i64, ptr %p8, align 8, !invariant.group !0
-     *     %q = tail call ptr @llvm.launder.invariant.group.p0(ptr nonnull %p)
-     *     %eq = icmp eq ptr %q, %p
-     *     tail call void @llvm.assume(i1 %eq)
-     *     tail call void @use_i64(i64 %x)
-     *     tail call void @use_i64(i64 %y)
-     *     tail call void @use_i64(i64 %x)
-     *     %y_plus_1 = add i64 %y, 1
-     *     store i64 %y_plus_1, ptr %p8, align 8, !invariant.group !0
-     *     tail call void @use_i64(i64 %y_plus_1)
-     *     ret void
-     *   }
-     *
-     * opt -S -O3 output without assume (remove `%eq` + `llvm.assume` first):
-     *
-     *   define void @store_reload_invariant(ptr captures(none) %p)
-     *   local_unnamed_addr {
-     *   entry:
-     *     %x = load i64, ptr %p, align 8, !invariant.group !0
-     *     %p8 = getelementptr i8, ptr %p, i64 8
-     *     %y = load i64, ptr %p8, align 8, !invariant.group !0
-     *     %q = tail call ptr @llvm.launder.invariant.group.p0(ptr nonnull %p)
-     *     %q8 = getelementptr i8, ptr %q, i64 8
-     *     tail call void @use_i64(i64 %x)
-     *     tail call void @use_i64(i64 %y)
-     *     store i64 %x, ptr %q, align 8, !invariant.group !0
-     *     tail call void @use_i64(i64 %x)
-     *     %y_plus_1 = add i64 %y, 1
-     *     store i64 %y_plus_1, ptr %q8, align 8, !invariant.group !0
-     *     tail call void @use_i64(i64 %y_plus_1)
-     *     ret void
-     *   }
-     *
-     * Analysis:
-     * - `llvm.launder.invariant.group` intentionally creates a fresh SSA name.
-     * - Without an explicit equality fact, O3 keeps stores on `%q/%q8`.
-     * - With `llvm.assume(%q == %p)`, O3 can reconnect `%q` to `%p`, fold the
-     *   memory updates back to `%p/%p8`, and eliminate the redundant `%x`
-     * store.
-     * - Therefore this assume is required to recover alias/value propagation
-     *   power after the launder boundary.
-     */
-    auto ptrEq = mlir::LLVM::ICmpOp::create(rewriter, op.getLoc(),
-                                            mlir::LLVM::ICmpPredicate::eq,
-                                            newSSA, adaptor.getToken());
-    mlir::LLVM::AssumeOp::create(rewriter, op.getLoc(), ptrEq);
+    // A reused cell gets a new record. Its tag and field stores carry
+    // !invariant.group, like the stores of the old record. The launder gives
+    // the new stores a new pointer, so LLVM does not take the old values for
+    // the new ones.
+    //
+    // No `llvm.assume(launder(p) == p)` may follow the launder. GVN and
+    // EarlyCSE use such an equality to replace the laundered pointer with
+    // `p`. This undoes the launder: the new stores then use the same pointer
+    // and invariant group as the old loads and stores, as if the tag and the
+    // fields of the cell never changed. In a loop that rebuilds one cell in
+    // place, LICM then moved the tag stores out of the loop, and the program
+    // read wrong values (see frontend/reuse_launder_loop.rr).
+    rewriter.replaceOpWithNewOp<mlir::LLVM::LaunderInvariantGroupOp>(
+        op, adaptor.getToken());
     return mlir::success();
   }
 };

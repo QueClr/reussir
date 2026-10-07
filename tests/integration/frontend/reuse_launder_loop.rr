@@ -1,0 +1,56 @@
+// A loop that rebuilds one unique cell in place. `step` consumes an S and
+// token reuse builds the next S in the same cell. The tag and field stores
+// of the new record carry !invariant.group, so the lowering launders the
+// cell pointer first (llvm.launder.invariant.group). An assume
+// `launder(p) == p` after the launder let GVN put the new stores back on
+// `p`. This undid the launder: LICM moved the tag stores out of the loop,
+// and the result was B(false) = 2 at -O aggressive. No assume may follow
+// a launder.
+
+// RUN: %rrc %s -o %t.ll --emit llvm-ir -O none
+// RUN: %FileCheck %s < %t.ll
+// RUN: %rrc %s -o %t.o --relocation-mode pic -Oaggressive
+// RUN: %cc %t.o %S/reuse_launder_loop.c -o %t.exe -L%library_path -lreussir_rt %rpath_flag %extra_sys_libs
+// RUN: %t.exe
+// RUN: %rrc %s -o %t.nopack.o --relocation-mode pic -Oaggressive --no-pack-record-members --reuse-across-call
+// RUN: %cc %t.nopack.o %S/reuse_launder_loop.c -o %t.nopack.exe -L%library_path -lreussir_rt %rpath_flag %extra_sys_libs
+// RUN: %t.nopack.exe
+// RUN: %rrc %s -o %t.def.o --relocation-mode pic
+// RUN: %cc %t.def.o %S/reuse_launder_loop.c -o %t.def.exe -L%library_path -lreussir_rt %rpath_flag %extra_sys_libs
+// RUN: %t.def.exe
+
+// CHECK-LABEL: define internal ptr @_RC4step(
+// CHECK: [[L1:%[0-9]+]] = call ptr @llvm.launder.invariant.group.p0(ptr [[P1:%[0-9]+]])
+// CHECK-NOT: icmp eq ptr [[L1]], [[P1]]
+// CHECK: [[L2:%[0-9]+]] = call ptr @llvm.launder.invariant.group.p0(ptr [[P2:%[0-9]+]])
+// CHECK-NOT: icmp eq ptr [[L2]], [[P2]]
+// CHECK: [[L3:%[0-9]+]] = call ptr @llvm.launder.invariant.group.p0(ptr [[P3:%[0-9]+]])
+// CHECK-NOT: icmp eq ptr [[L3]], [[P3]]
+// CHECK: ret ptr
+
+enum S { A(u8, u16), B(bool), C(u64) }
+
+fn step(x : S, s : u64) -> S {
+    match x {
+        S::A(a, b) => { S::B{s % 2 == 1} },
+        S::B(f) => { S::A{(s % 251) as u8, (s % 65521) as u16} },
+        S::C(w) => { S::C{w + s} }
+    }
+}
+
+fn iter(x : S, n : u64, s : u64) -> S {
+    if n == 0 { x } else { iter(step(x, s), n - 1, (s * 33 + 10) % 1000003) }
+}
+
+fn sum(x : S) -> u64 {
+    match x {
+        S::A(a, b) => { (a as u64) * 100000 + (b as u64) },
+        S::B(f) => { if f { 1 } else { 2 } },
+        S::C(w) => { w }
+    }
+}
+
+// Six steps from A{1, 2}: B, A, B, A, B, A{250, 9648}.
+fn rv(q : u64) -> u64 { if q == 0 { sum(iter(S::A{1, 2}, 6, 153)) } else { 0 } }
+
+extern "C" trampoline "rv_ffi" = rv;

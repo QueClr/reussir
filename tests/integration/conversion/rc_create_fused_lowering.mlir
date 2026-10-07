@@ -155,13 +155,15 @@ module attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> :
 // FUSION-SAME: skipFields = array<i64: 0, 1>
 
 // CHECK-LABEL: define ptr @reuse_compound
-// CHECK: call void @llvm.assume
+// CHECK: call ptr @llvm.launder.invariant.group
+// CHECK-NOT: call void @llvm.assume
 // CHECK: %[[PAYLOAD:.*]] = getelementptr { i32, %"List::Cons" }, ptr %{{.*}}, i32 0, i32 1
 // CHECK-NOT: getelementptr %"List::Cons", ptr %[[PAYLOAD]]
 // CHECK: ret ptr
 
 // CHECK-LABEL: define ptr @reuse_variant
-// CHECK: call void @llvm.assume
+// CHECK: call ptr @llvm.launder.invariant.group
+// CHECK-NOT: call void @llvm.assume
 // CHECK: %[[VARIANT:.*]] = getelementptr %List, ptr %{{.*}}, i32 0, i32 0
 // CHECK: %[[TAGPTR:.*]] = getelementptr %List, ptr %[[VARIANT]], i32 0, i32 1
 // CHECK: store i32 0, ptr %[[TAGPTR]], align 4
@@ -170,7 +172,8 @@ module attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> :
 // CHECK: ret ptr
 
 // CHECK-LABEL: define ptr @reuse_variant_other_tag
-// CHECK: call void @llvm.assume
+// CHECK: call ptr @llvm.launder.invariant.group
+// CHECK-NOT: call void @llvm.assume
 // CHECK: %[[VARIANT2:.*]] = getelementptr %ListAlt, ptr %{{.*}}, i32 0, i32 0
 // CHECK: %[[TAGPTR2:.*]] = getelementptr %ListAlt, ptr %[[VARIANT2]], i32 0, i32 1
 // CHECK: store i32 0, ptr %[[TAGPTR2]], align 4
@@ -179,7 +182,8 @@ module attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> :
 // CHECK: ret ptr
 
 // CHECK-LABEL: define ptr @reuse_variant_other_type
-// CHECK: call void @llvm.assume
+// CHECK: call ptr @llvm.launder.invariant.group
+// CHECK-NOT: call void @llvm.assume
 // CHECK: %[[VARIANT3:.*]] = getelementptr %ListAlt, ptr %{{.*}}, i32 0, i32 0
 // CHECK: %[[TAGPTR3:.*]] = getelementptr %ListAlt, ptr %[[VARIANT3]], i32 0, i32 1
 // CHECK: store i32 0, ptr %[[TAGPTR3]], align 4
@@ -188,7 +192,8 @@ module attributes { dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i64, dense<64> :
 // CHECK: ret ptr
 
 // CHECK-LABEL: define ptr @reuse_variant_prefix
-// CHECK: call void @llvm.assume
+// CHECK: call ptr @llvm.launder.invariant.group
+// CHECK-NOT: call void @llvm.assume
 // CHECK: %[[VARIANT4:.*]] = getelementptr %Triple, ptr %{{.*}}, i32 0, i32 0
 // CHECK: %[[TAGPTR4:.*]] = getelementptr %Triple, ptr %[[VARIANT4]], i32 0, i32 1
 // CHECK: store i32 0, ptr %[[TAGPTR4]], align 4
