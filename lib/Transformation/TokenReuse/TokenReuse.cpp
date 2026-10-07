@@ -483,6 +483,25 @@ int scoreToken(mlir::Value token, TokenAcceptor acceptor,
   return heuristic(producedType, producerRc, acceptor, equivalence, sizes);
 }
 
+// The block ending the path through `region` of a region branch op, where
+// the tokens that do not survive the op on that path are freed. A region
+// without a block is still a path: an `scf.if` without an else runs no region
+// when its condition is false, so a token consumed in its then region must be
+// freed there too. Its else block (an `scf.if` with results always has one)
+// is materialized to hold the frees. Null for an empty region of any other
+// op.
+mlir::Block *getOrCreateExitBlock(mlir::Region &region) {
+  if (!region.empty())
+    return &region.front();
+  auto ifOp = llvm::dyn_cast<mlir::scf::IfOp>(region.getParentOp());
+  if (!ifOp || &ifOp.getElseRegion() != &region)
+    return nullptr;
+  mlir::OpBuilder builder(ifOp.getContext());
+  builder.createBlock(&region);
+  mlir::scf::YieldOp::create(builder, ifOp.getLoc());
+  return &region.front();
+}
+
 bool escapeTrappedTokensSweep(mlir::func::FuncOp func) {
   llvm::SmallVector<mlir::scf::IfOp> worklist;
   func.walk<mlir::WalkOrder::PostOrder>([&](mlir::scf::IfOp op) {
@@ -664,8 +683,14 @@ struct TokenReusePass : public impl::ReussirTokenReusePassBase<TokenReusePass> {
             for (mlir::Value val :
                  tokensInStableOrder(branchResults[i], dfsOrder)) {
               if (!intersection.count(val)) {
-                mlir::Block &block = op.getRegion(i).front();
-                frees.push_back({val, block.getTerminator()});
+                mlir::Block *exit = getOrCreateExitBlock(op.getRegion(i));
+                if (!exit) {
+                  op.emitOpError() << "token reuse cannot free a token on "
+                                      "the path through an empty region";
+                  signalPassFailure();
+                  return {};
+                }
+                frees.push_back({val, exit->getTerminator()});
               }
             }
           }

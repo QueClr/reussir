@@ -56,4 +56,29 @@ module @test attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<f80, dense<
         }
         return
     }
+
+    // The same with no else region (the canonical form of a one-armed
+    // `scf.if`): the path that skips the then region still has to free the
+    // token, so the else block is materialized to hold the free.
+    // CHECK-LABEL: func.func @partial_no_else
+    // CHECK-SAME: (%[[regarg0:[a-z0-9]+]]: !reussir.rc<i64>, %[[regarg1:[a-z0-9]+]]: i1, %[[regarg2:[a-z0-9]+]]: i64) {
+    // CHECK:  %[[reg0:[a-z0-9]+]] = reussir.rc.dec(%[[regarg0]] : !reussir.rc<i64>) : !reussir.nullable<!reussir.token<align : 8, size : 16>>
+    // CHECK:  scf.if %[[regarg1]] {
+    // CHECK:    %[[reg1:[a-z0-9]+]] = reussir.token.ensure(%[[reg0]] : <!reussir.token<align : 8, size : 16>>) : <align : 8, size : 16>
+    // CHECK:    %[[reg2:[a-z0-9]+]] = reussir.rc.create value(%[[regarg2]] : i64) token(%[[reg1]] : !reussir.token<align : 8, size : 16>) : !reussir.rc<i64>
+    // CHECK:    func.call @opaque(%[[reg2]]) : (!reussir.rc<i64>) -> ()
+    // CHECK:  } else {
+    // CHECK:    reussir.token.free(%[[reg0]] : !reussir.nullable<!reussir.token<align : 8, size : 16>>)
+    // CHECK:  }
+    // CHECK:  return
+    // CHECK: }
+    func.func @partial_no_else(%0: !rc64, %1: i1, %x: i64) {
+        %2 = reussir.rc.dec (%0 : !rc64) : !reussir.nullable<!reussir.token<align: 8, size: 16>>
+        scf.if %1 {
+          %tk = reussir.token.alloc : !i64token
+          %5 = reussir.rc.create value(%x : i64) token(%tk : !i64token) : !rc64
+          func.call @opaque(%5) : (!rc64) -> ()
+        }
+        return
+    }
 }
