@@ -165,6 +165,13 @@ void markCompoundAvoidedCopies(ReussirRcCreateCompoundOp op) {
                                 : mlir::TypedValue<RcType>{};
   if (!sourceRc)
     return;
+  // A load of the old record's field i is already in place only if the old
+  // record is laid out like the new one. Token reuse also hands a cell of
+  // one record type to another of the same size and alignment, where field
+  // i can sit elsewhere, so require the same box type.
+  if (sourceRc.getType().getInnerBoxType() !=
+      op.getRcPtr().getType().getInnerBoxType())
+    return;
 
   llvm::SmallVector<int64_t> skippedFields;
   for (auto [index, field] : llvm::enumerate(op.getFields()))
