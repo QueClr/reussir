@@ -17,6 +17,7 @@
 #include "Reussir/IR/ReussirOps.h"
 #include "Reussir/IR/ReussirTypes.h"
 
+#include <llvm/ADT/DenseSet.h>
 #include <llvm/ADT/SmallVector.h>
 #include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/IR/BuiltinAttributes.h>
@@ -56,7 +57,18 @@ mlir::TypedValue<RcType> getReusedRcFromToken(mlir::Value token) {
   return reinterpret.getRcPtr();
 }
 
-bool structurallySameType(mlir::Type lhs, mlir::Type rhs) {
+// Pairs of record types assumed structurally equal while their members are
+// being compared.
+using AssumedEqualTypes = llvm::DenseSet<std::pair<mlir::Type, mlir::Type>>;
+
+// Record types may be recursive (a member refers back to an enclosing named
+// record), so two distinct names with the same shape — a user list and the
+// standard one — make member-wise recursion unbounded. Compare coinductively:
+// a pair already under comparison is assumed equal. Any mismatch below it
+// makes the whole comparison false, so the assumption only ever closes a
+// cycle of pairs whose members all match.
+bool structurallySameType(mlir::Type lhs, mlir::Type rhs,
+                          AssumedEqualTypes &assumed) {
   if (lhs == rhs)
     return true;
 
@@ -65,7 +77,16 @@ bool structurallySameType(mlir::Type lhs, mlir::Type rhs) {
   if (lhsRecord || rhsRecord) {
     if (!lhsRecord || !rhsRecord)
       return false;
+    if (!assumed.insert({lhs, rhs}).second)
+      return true;
     if (lhsRecord.isVariant() != rhsRecord.isVariant())
+      return false;
+    // The default capability decides how a member of this type is stored
+    // (a [value] record inline, a shared or regional one as a pointer), and
+    // `fixed` how a variant box is sized.
+    if (lhsRecord.getDefaultCapability() != rhsRecord.getDefaultCapability())
+      return false;
+    if (lhsRecord.getFixed() != rhsRecord.getFixed())
       return false;
     if (lhsRecord.isCompound() != rhsRecord.isCompound())
       return false;
@@ -78,13 +99,18 @@ bool structurallySameType(mlir::Type lhs, mlir::Type rhs) {
              lhsRecord.getMemberIsField(), rhsRecord.getMemberIsField())) {
       if (lhsField != rhsField)
         return false;
-      if (!structurallySameType(lhsMember, rhsMember))
+      if (!structurallySameType(lhsMember, rhsMember, assumed))
         return false;
     }
     return true;
   }
 
   return false;
+}
+
+bool structurallySameType(mlir::Type lhs, mlir::Type rhs) {
+  AssumedEqualTypes assumed;
+  return structurallySameType(lhs, rhs, assumed);
 }
 
 bool isLoadFromCompoundField(mlir::Value value,
