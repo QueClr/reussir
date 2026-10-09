@@ -181,6 +181,11 @@ static std::string monomorphize(mlir::ModuleOp moduleOp, ReussirPolyFFIOp op) {
       }
     }
   }
+  // A `[:` without a closing `:]` is not a placeholder: write it and the rest
+  // of the text unchanged, as `substitute_placeholders`
+  // (crates/reussir-core/src/full/ffi.rs) does.
+  if (inSubstitution)
+    os << SUBSTART;
   os << text.substr(cursor);
   return buffer;
 }
