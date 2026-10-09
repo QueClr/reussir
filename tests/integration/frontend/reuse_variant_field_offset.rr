@@ -1,0 +1,70 @@
+// Token reuse builds a variant arm in the cell of another arm. Copy
+// avoidance may skip the store of a field only if the old field has the
+// same type and sits at the same byte offset. Three cases:
+// - `moved_field`: with the packed layout (the default), M::A = (u32, u64)
+//   puts A.0 at offset 8 of the payload and M::B = (u32, u32, u32) puts B.0
+//   at offset 0, so the store of B.0 must stay.
+// - `widened_member`: with --no-pack-record-members, the type converter
+//   widens the 3-byte S3 to an i32, so E::A.2 moves to offset 8 while E::B.2
+//   is at offset 6, so the store of B.2 must stay.
+// - `self_widened`: with --no-pack-record-members, the type converter
+//   widens E2::A.1 (a 3-byte T3 before a u16) to an i32, which moves A.1
+//   itself to offset 4. E2::B.1 is followed by a u8, stays a T3 and is at
+//   offset 2, so the store of B.1 must stay. (The last members of E2::A and
+//   E2::B give both arms 24-byte cells: the cells can be reused, and the
+//   widened LLVM struct still fits in the cell.)
+
+// RUN: %rrc %s -o %t.o --relocation-mode pic
+// RUN: %cc %t.o %S/reuse_variant_field_offset.c -o %t.exe -L%library_path -lreussir_rt %rpath_flag %extra_sys_libs
+// RUN: %t.exe
+// RUN: %rrc %s -o %t.opt.o --relocation-mode pic -Oaggressive
+// RUN: %cc %t.opt.o %S/reuse_variant_field_offset.c -o %t.opt.exe -L%library_path -lreussir_rt %rpath_flag %extra_sys_libs
+// RUN: %t.opt.exe
+// RUN: %rrc %s -o %t.nopack.o --relocation-mode pic -Oaggressive --no-pack-record-members
+// RUN: %cc %t.nopack.o %S/reuse_variant_field_offset.c -o %t.nopack.exe -L%library_path -lreussir_rt %rpath_flag %extra_sys_libs
+// RUN: %t.nopack.exe
+
+enum M { A(u32, u64), B(u32, u32, u32) }
+
+fn f(m : M) -> u64 {
+    match m {
+        M::A(c, x) => { f(M::B{c, 1, 0}) },
+        M::B(c, d, e) => { (c as u64) * 1000 + (d as u64) }
+    }
+}
+
+pub fn moved_field(c : u64, x : u64) -> u64 {
+    f(M::A{c as u32, x})
+}
+
+struct [value] S3(u8, u8, u8)
+enum E { A(u16, S3, u16, u16, u16), B(u32, u16, u16, u32, u32) }
+
+fn g(e : E) -> u64 {
+    match e {
+        E::A(x, s, y, z, w) => { g(E::B{9, 8, y, 1, 2}) },
+        E::B(c, d, y, h, i) => { (c as u64) * 1000000 + (d as u64) * 1000 + (y as u64) }
+    }
+}
+
+pub fn widened_member(x : u64, a : u64, y : u64) -> u64 {
+    g(E::A{x as u16, S3{a as u8, (a + 1) as u8, (a + 2) as u8}, y as u16, 5, 6})
+}
+
+struct [value] T3 { a: u8, b: u8, c: u8 }
+enum E2 { A(u16, T3, u16, u16), B(u16, T3, u8, u64) }
+
+fn h(e : E2) -> u64 {
+    match e {
+        E2::A(x, t, y, w) => { h(E2::B{x, t, 1, 9}) },
+        E2::B(x, t, z, q) => { (x as u64) * 1000000 + (t.a as u64) * 10000 + (t.b as u64) * 100 + (t.c as u64) }
+    }
+}
+
+pub fn self_widened(x : u64, a : u64) -> u64 {
+    h(E2::A{x as u16, T3{a: a as u8, b: (a + 1) as u8, c: (a + 2) as u8}, 7, 8})
+}
+
+extern "C" trampoline "moved_field" = moved_field;
+extern "C" trampoline "widened_member" = widened_member;
+extern "C" trampoline "self_widened" = self_widened;

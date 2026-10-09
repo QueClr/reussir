@@ -766,24 +766,39 @@ uint32_t RecordType::getPhysicalMemberIndex(const mlir::DataLayout &dataLayout,
   return static_cast<uint32_t>(it - order.begin());
 }
 
+namespace {
+// The layout of a compound record's members in packed physical order, so
+// offsets (and the total size) match the converted LLVM struct.
+CompoundLayout derivePhysicalCompoundLayout(RecordType type,
+                                            const mlir::DataLayout &dataLayout) {
+  llvm::SmallVector<uint32_t> order = type.getPackedOrder(dataLayout);
+  llvm::SmallVector<mlir::Type> members(order.size());
+  llvm::SmallVector<bool> memberIsField(order.size());
+  for (auto [physical, logical] : llvm::enumerate(order)) {
+    members[physical] = type.getMembers()[logical];
+    memberIsField[physical] = type.getMemberIsField()[logical];
+  }
+  auto derived = deriveCompoundLayout(type.getContext(), members,
+                                      memberIsField, dataLayout);
+  if (!derived)
+    llvm_unreachable("RecordType must have a fixed size");
+  return std::move(*derived);
+}
+} // namespace
+
+uint64_t RecordType::getMemberOffset(const mlir::DataLayout &dataLayout,
+                                     uint32_t index) const {
+  assert(isCompound() && "member offsets are a compound-layout query");
+  CompoundLayout layout = derivePhysicalCompoundLayout(*this, dataLayout);
+  return layout.memberOffsets[getPhysicalMemberIndex(dataLayout, index)];
+}
+
 RecordType::LayoutInfo RecordType::getElementRegionLayoutInfo(
     const mlir::DataLayout &dataLayout) const {
   if (isCompound()) {
-    // Iterate members in packed physical order so offsets (and the total
-    // size) match the converted LLVM struct.
-    llvm::SmallVector<uint32_t> order = getPackedOrder(dataLayout);
-    llvm::SmallVector<mlir::Type> members(order.size());
-    llvm::SmallVector<bool> memberIsField(order.size());
-    for (auto [physical, logical] : llvm::enumerate(order)) {
-      members[physical] = getMembers()[logical];
-      memberIsField[physical] = getMemberIsField()[logical];
-    }
-    auto derived =
-        deriveCompoundLayout(getContext(), members, memberIsField, dataLayout);
-    if (!derived)
-      llvm_unreachable("RecordType must have a fixed size");
-    return {derived->size, derived->alignment,
-            derived->memberWithLargestAlignment};
+    CompoundLayout derived = derivePhysicalCompoundLayout(*this, dataLayout);
+    return {derived.size, derived.alignment,
+            derived.memberWithLargestAlignment};
   }
   llvm::TypeSize largestSize = llvm::TypeSize::getZero();
   llvm::Align largestAlignment = llvm::Align(1);
