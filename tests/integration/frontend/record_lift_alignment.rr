@@ -1,0 +1,54 @@
+// Under the declaration-order layout (`--no-pack-record-members`) the type
+// converter widens a member followed by padding to an integer that covers
+// the padding. It may do so only if that integer is no more aligned than the
+// next member; otherwise the member is padded explicitly. S3 (3 bytes,
+// align 1) before a u16 was widened to i32, so LLVM's Q was 8 bytes with
+// alignment 4, while Reussir's layout of Q is 6 bytes with alignment 2. Each
+// R cell (60 bytes allocated) was written through an 80-byte LLVM type.
+
+// RUN: %rrc %s -o %t.ll --emit llvm-ir -O none --no-pack-record-members
+// RUN: %FileCheck %s < %t.ll
+// RUN: %rrc %s -o %t.o --relocation-mode pic --no-pack-record-members
+// RUN: %cc %t.o %S/record_lift_alignment.c -o %t.exe -L%library_path -lreussir_rt %rpath_flag %extra_sys_libs
+// RUN: %t.exe
+// RUN: %rrc %s -o %t.opt.o --relocation-mode pic -Oaggressive --no-pack-record-members
+// RUN: %cc %t.opt.o %S/record_lift_alignment.c -o %t.opt.exe -L%library_path -lreussir_rt %rpath_flag %extra_sys_libs
+// RUN: %t.opt.exe
+
+// A 3-byte and a 6-byte record keep their size and alignment; widening a u8
+// to i16 before a u16 is still fine.
+// CHECK-DAG: %_RC1Q = type { { %_RC2S3, [1 x i8] }, i16 }
+// CHECK-DAG: %_RC1W = type { { %_RC2S6, [2 x i8] }, i32 }
+// CHECK-DAG: %_RC1P = type { i16, i16 }
+
+struct [value] S3(u8, u8, u8)
+struct [value] Q(S3, u16)
+struct [value] S6(u16, u16, u16)
+struct [value] W(S6, u32)
+struct [value] P(u8, u16)
+struct R(Q, Q, Q, Q, Q, Q, W, P, u16)
+enum L { Nil, Cons(R, L) }
+
+fn mkq(i : u64) -> Q { Q{S3{1, 2, (i % 200) as u8}, (i % 1000) as u16} }
+
+fn build(n : u64, acc : L) -> L {
+    if n == 0 { acc } else {
+        build(n - 1, L::Cons{R{mkq(n), mkq(n), mkq(n), mkq(n), mkq(n), mkq(n),
+                               W{S6{1, 2, 3}, (n % 7) as u32}, P{1, 2},
+                               (n % 50000) as u16}, acc})
+    }
+}
+
+fn sum(l : L, acc : u64) -> u64 {
+    match l {
+        L::Nil => { acc },
+        L::Cons(r, t) => {
+            sum(t, acc + (r.8 as u64) + (r.5.1 as u64) + (r.0.0.2 as u64)
+                   + (r.6.1 as u64) + (r.7.1 as u64))
+        }
+    }
+}
+
+pub fn main() -> u64 { sum(build(20000, L::Nil{}), 0) }
+
+extern "C" trampoline "reussir_main" = main;

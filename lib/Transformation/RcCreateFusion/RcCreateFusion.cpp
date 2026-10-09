@@ -110,38 +110,6 @@ bool sameVariantField(RcType sourceRc, RcType targetRc,
           targetPayloadType.getMembers()[fieldIndex])
     return false;
 
-  // Without the member reordering (--no-pack-record-members), the type
-  // converter can widen a member to fill the padding before the next member,
-  // and the wider integer can move the member itself. So the LLVM offset of
-  // member i also depends on members 0..i-1 and on the alignment of member
-  // i+1. Then those must agree too. With the reordering (the default),
-  // members are sorted by alignment. If the size of each member is a multiple
-  // of its alignment, as for every type the frontend makes, no padding comes
-  // between two members, and the converter widens no member.
-  if (auto *dialect =
-          sourcePayloadType.getContext()->getLoadedDialect<ReussirDialect>();
-      dialect && !dialect->getPackRecordMembers()) {
-    mlir::MLIRContext *context = sourcePayloadType.getContext();
-    auto storageType = [&](RecordType record, int64_t index) {
-      return memberStorageType(context, record.getMembers()[index],
-                               record.getMemberIsField()[index]);
-    };
-    for (int64_t index = 0; index < fieldIndex; ++index)
-      if (sourcePayloadType.getMemberIsField()[index] !=
-              targetPayloadType.getMemberIsField()[index] ||
-          storageType(sourcePayloadType, index) !=
-              storageType(targetPayloadType, index))
-        return false;
-    auto nextAlignment = [&](RecordType record) -> uint64_t {
-      if (static_cast<size_t>(fieldIndex + 1) >= record.getMembers().size())
-        return 1;
-      return dataLayout.getTypeABIAlignment(
-          storageType(record, fieldIndex + 1));
-    };
-    if (nextAlignment(sourcePayloadType) != nextAlignment(targetPayloadType))
-      return false;
-  }
-
   RcBoxType sourceBox = sourceRc.getInnerBoxType();
   RcBoxType targetBox = targetRc.getInnerBoxType();
   if (sourceBox.isHeaderFused() != targetBox.isHeaderFused() ||

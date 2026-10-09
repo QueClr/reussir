@@ -202,10 +202,8 @@ def ReussirRecordType
       // the physical order of getPhysicalMemberIndex (sorted by alignment
       // when the dialect reorders record members, its default; declaration
       // order with --no-pack-record-members), each at its natural alignment.
-      // This is not an LLVM packed struct. Without the reordering, the type
-      // converter can widen a member over the padding before the next
-      // member, and the converted LLVM struct can then place that member and
-      // the later ones at other offsets.
+      // This is not an LLVM packed struct, and it is the offset of the
+      // member in the converted LLVM struct.
       uint64_t getMemberOffset(const mlir::DataLayout &dataLayout, uint32_t index) const;
       // Outlined drop/acquire glue symbols. The glue's body derives member
       // links from its argument reference's atomic kind (the whole-subtree

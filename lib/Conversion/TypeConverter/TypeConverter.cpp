@@ -144,11 +144,18 @@ convertRecordType(mlir::LLVMTypeConverter &converter,
             mlir::IntegerType::get(type.getContext(), 16),
             mlir::IntegerType::get(type.getContext(), 8),
         };
+        // Widen the previous member over the padding only to an integer no
+        // more aligned than the next member: that integer then starts where
+        // the previous member does and does not raise the record's
+        // alignment. A more aligned one (a 3-byte record followed by a u16,
+        // lifted to i32) would move members and make the LLVM struct larger
+        // than the layout Reussir allocates; use explicit padding instead.
         bool lift = false;
         for (auto liftCandidate : liftCandidates) {
           auto liftCandidateSize = dataLayout.getTypeSize(liftCandidate);
           if (lastMemberSize < liftCandidateSize &&
-              lastMemberSize + lastMemberNeedToPad == liftCandidateSize) {
+              lastMemberSize + lastMemberNeedToPad == liftCandidateSize &&
+              dataLayout.getTypeABIAlignment(liftCandidate) <= align) {
             members.back() = liftCandidate;
             lift = true;
             break;

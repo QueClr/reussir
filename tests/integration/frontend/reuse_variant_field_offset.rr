@@ -4,15 +4,15 @@
 // - `moved_field`: with the packed layout (the default), M::A = (u32, u64)
 //   puts A.0 at offset 8 of the payload and M::B = (u32, u32, u32) puts B.0
 //   at offset 0, so the store of B.0 must stay.
-// - `widened_member`: with --no-pack-record-members, the type converter
-//   widens the 3-byte S3 to an i32, so E::A.2 moves to offset 8 while E::B.2
-//   is at offset 6, so the store of B.2 must stay.
-// - `self_widened`: with --no-pack-record-members, the type converter
-//   widens E2::A.1 (a 3-byte T3 before a u16) to an i32, which moves A.1
-//   itself to offset 4. E2::B.1 is followed by a u8, stays a T3 and is at
-//   offset 2, so the store of B.1 must stay. (The last members of E2::A and
-//   E2::B give both arms 24-byte cells: the cells can be reused, and the
-//   widened LLVM struct still fits in the cell.)
+// - `widened_member`: with --no-pack-record-members, E::A.2 and E::B.2 are
+//   u16 fields at offset 6 of their payloads, although member 0 differs. The
+//   3-byte S3 before E::A.2 is padded, not widened, so the store of B.2 can
+//   be skipped.
+// - `self_widened`: with --no-pack-record-members, E2::A.1 and E2::B.1 are
+//   T3 fields at offset 2, although member 2 differs (a u16 and a u8). T3
+//   is padded, not widened, so the store of B.1 can be skipped. (The last
+//   members of E2::A and E2::B give both arms 24-byte cells, so the cells
+//   can be reused.)
 
 // RUN: %rrc %s -o %t.o --relocation-mode pic
 // RUN: %cc %t.o %S/reuse_variant_field_offset.c -o %t.exe -L%library_path -lreussir_rt %rpath_flag %extra_sys_libs
