@@ -43,6 +43,7 @@
 #include "Reussir/IR/ReussirEnumAttrs.h"
 #include "Reussir/IR/ReussirOps.h"
 #include "Reussir/IR/ReussirTypes.h"
+#include "Reussir/Transformation/SpecialPointerTag.h"
 
 namespace reussir {
 
@@ -54,6 +55,35 @@ namespace reussir {
 //===----------------------------------------------------------------------===//
 
 namespace {
+
+// Under the special-pointer-tag scheme a nullary constructor is an immediate
+// pointing at a static per-tag dummy box. Under TBI, increments of an
+// immediate land on the dummy's 32-bit count (the LLVM lowering keeps rc.inc
+// unguarded), so after 2^32 references the count wraps and a decrement reads
+// 1. The decrement must then not take its unique branch (the dummy is not
+// heap memory): no release, no token. Whether the value must be tested in
+// the branch condition: not for types without immediates, not under the
+// immortal encoding (rc.inc steers its store away from the dummy, so the
+// count never reaches 1), and not for a destructuring decrement of an arm
+// with members.
+bool needsImmediateGuard(ReussirRcDecOp op) {
+  RcType type = op.getRcPtr().getType();
+  auto module = op->getParentOfType<mlir::ModuleOp>();
+  if (!module)
+    return false;
+  auto encoding = module->getAttrOfType<mlir::StringAttr>(kSpecialPtrTagAttr);
+  if (!encoding || encoding.getValue() == kSpecialPtrTagImmortal ||
+      !type.mayCarrySpecialPointerTag())
+    return false;
+  auto variant = llvm::cast<RecordType>(type.getElementType());
+  if (op.isVariantDestructuring())
+    return variant.isNullaryArm(
+        op.getDestructureTagAttr().getValue().getZExtValue());
+  for (size_t tag = 0, n = variant.getMembers().size(); tag < n; ++tag)
+    if (variant.isNullaryArm(tag))
+      return true;
+  return false;
+}
 
 struct RcDecrementExpansionPattern
     : public mlir::OpRewritePattern<ReussirRcDecOp> {
@@ -85,8 +115,24 @@ struct RcDecrementExpansionPattern
     auto isOne = mlir::arith::CmpIOp::create(
         rewriter, op.getLoc(), mlir::arith::CmpIPredicate::eq, prevRcCount,
         mlir::arith::ConstantIndexOp::create(rewriter, op.getLoc(), 1));
+    // An immediate whose wrapped count reads 1 must take the shared branch:
+    // it is not heap memory, so it is neither freed nor turned into a token
+    // (the shared branch's rc.set skips immediates). The test joins the
+    // condition, so the unique branch keeps its usual shape.
+    mlir::Value unique = isOne.getResult();
+    // One test for all nullary arms: rc.is_immediate lowers to a single
+    // top-byte check under TBI.
+    if (needsImmediateGuard(op)) {
+      mlir::Value isImmediate = ReussirRcIsImmediateOp::create(
+          rewriter, op.getLoc(), rewriter.getI1Type(), op.getRcPtr());
+      mlir::Value notImmediate = mlir::arith::XOrIOp::create(
+          rewriter, op.getLoc(), isImmediate,
+          mlir::arith::ConstantIntOp::create(rewriter, op.getLoc(), 1, 1));
+      unique = mlir::arith::AndIOp::create(rewriter, op.getLoc(), unique,
+                                           notImmediate);
+    }
     auto likelyUnique =
-        ReussirExpectOp::create(rewriter, op.getLoc(), isOne.getResult(), true);
+        ReussirExpectOp::create(rewriter, op.getLoc(), unique, true);
     auto ifOp =
         mlir::scf::IfOp::create(rewriter, op.getLoc(), op->getResultTypes(),
                                 likelyUnique.getLikely(), true, true);

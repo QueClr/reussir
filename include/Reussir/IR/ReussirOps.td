@@ -863,6 +863,33 @@ def ReussirRcCompareImmortalOp : ReussirRcOp<"compare_immortal", [Pure]> {
   let hasVerifier = 1;
 }
 
+def ReussirRcIsImmediateOp : ReussirRcOp<"is_immediate", [Pure]> {
+  let summary = "Test whether an rc value is the immediate of a nullary arm";
+  let description = [{
+    `reussir.rc.is_immediate` answers whether an rc value is the unboxed
+    immediate of any nullary arm of its variant type. It does not access
+    memory.
+
+    Under the TBI encoding, it is one test of the pointer's top byte, for
+    any number of nullary arms: an immediate has `tag + 1` there, and a real
+    box has zero. Under the immortal encoding, it compares the pointer with
+    the dummy box of each nullary arm. Without the special-pointer-tag
+    scheme, no value is an immediate, and the result is false.
+
+    ```mlir
+    %imm = reussir.rc.is_immediate (%rc : !reussir.rc<...>)
+    ```
+  }];
+
+  let arguments = (ins Arg<ReussirRcType, "rc pointer to classify">:$rcPtr);
+  let results =
+      (outs Res<I1, "whether the value is an immediate">:$result);
+  let assemblyFormat = [{
+    `(` $rcPtr `:` qualified(type($rcPtr)) `)` attr-dict
+  }];
+  let hasVerifier = 1;
+}
+
 def ReussirRcReinterpretOp : ReussirRcOp<"reinterpret", []> {
   let summary = "Reinterpret a Rc pointer into a token";
   let description = [{

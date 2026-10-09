@@ -433,8 +433,14 @@ mlir::TypedValue<RcType> expandedDecProducerRc(mlir::scf::IfOp scfIf,
         dyn_cast_or_null<ReussirExpectOp>(scfIf.getCondition().getDefiningOp());
     if (!expectOp)
       return nullptr;
-    auto cmp = dyn_cast_or_null<mlir::arith::CmpIOp>(
-        expectOp.getCondition().getDefiningOp());
+    mlir::Value condition = expectOp.getCondition();
+    // Under the TBI encoding the condition also excludes the type's
+    // immediates: `andi(count == 1, not immediate)`.
+    if (auto both = dyn_cast_or_null<mlir::arith::AndIOp>(
+            condition.getDefiningOp()))
+      condition = both.getLhs();
+    auto cmp =
+        dyn_cast_or_null<mlir::arith::CmpIOp>(condition.getDefiningOp());
     if (!cmp)
       return nullptr;
     auto rcFetch = llvm::dyn_cast_if_present<ReussirRcFetchOp>(

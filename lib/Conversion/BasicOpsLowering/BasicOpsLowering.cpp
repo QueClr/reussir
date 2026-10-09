@@ -111,19 +111,24 @@ namespace {
 //     fewer than 2^(w-2) can exist). Foreign code sees a layout-compatible
 //     box.
 // Two invariants keep both encodings sound:
-//   * the dummy's refcount is pinned above the shared/unique decision point,
-//     so an immediate's decrement always takes the *shared* branch (no field
-//     drop, no token, no free of the dummy) and `rc.is_unique` answers
-//     false. In the immortal encoding on targets narrower than 64 bits,
-//     `rc.inc`'s store is steered away from a recognized dummy as well —
-//     2^(w-2) unbalanced increments would otherwise be reachable and wrap
-//     the count. (With w = 64 that is > 4 * 10^18 increments: unreachable,
-//     so the increment stays guard-free on 64-bit targets.)
-//   * `rc.set` — the one decrementing store — steers a recognized-immediate
-//     access to a separate scratch word (an address select off the critical
-//     path), so the dummy count can never decay to 1.
-// The only other guard is `rc.assume_unique`, which must neutralize its
-// assumption for immediates (an `assume(false)` would be unsound).
+//   * an immediate's decrement never drops a field, makes a token or frees
+//     the dummy. In the immortal encoding the dummy's refcount is pinned
+//     above the shared/unique decision point (`rc.inc`'s store is steered
+//     away from a recognized dummy as well), so the decrement always takes
+//     the *shared* branch and `rc.is_unique` answers false. Under TBI the
+//     increment stays guard-free and lands on the dummy: its count word is
+//     32 bits, so 2^32 references wrap it through 0 and 1. The decrement
+//     expansion therefore takes its unique branch only for a value that is
+//     not one of the type's immediates (RcDecrementExpansion), and rc.inc
+//     only assumes `old >= 1` for real boxes. Under TBI `rc.is_unique` can
+//     then answer true for a wrapped dummy; no pass emits it for a type with
+//     immediates.
+//   * `rc.set` — the one decrementing store — skips the store for a
+//     recognized immediate (behind an unlikely branch), so a decrement never
+//     writes the dummy count.
+// The other guards are the decrement test above and `rc.assume_unique`,
+// which must neutralize its assumption for immediates (an `assume(false)`
+// would be unsound).
 
 enum class TagEncoding { None, TBI, Immortal };
 
@@ -150,8 +155,9 @@ TagEncoding specialPtrTagEncoding(mlir::Operation *op) {
 // The per-tag dummy box a tagged immediate points at: `{refcount, tag}`,
 // sized to the target's index width. Loads and increments through a tagged
 // value land here and observe a well-formed shared box header carrying the
-// immediate's own tag; the refcount stays pinned because `rc.set` never
-// writes it (see above). The dummy mirrors the fused box header exactly:
+// immediate's own tag. `rc.set` never writes the refcount (see above); under
+// TBI the unguarded `rc.inc` makes it grow and wrap, under the immortal
+// encoding it stays at its initial value. The dummy mirrors the fused box header exactly:
 // an i32 count and the i32 tag sharing one 8-byte word.
 mlir::LLVM::GlobalOp tagDummyBox(mlir::ModuleOp module, mlir::Location loc,
                                  uint64_t tag, TagEncoding encoding,
@@ -1637,13 +1643,13 @@ struct ReussirRcIncConversionPattern
           rewriter, op.getLoc(), llvmPtrType, convertedBoxType,
           adaptor.getRcPtr(), llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 0});
     }
-    // Usually no guard for tagged immediates: the increment lands on the
-    // dummy box's refcount — a benign write that only ever grows it (rc.set,
-    // the sole decrementing store, is steered away). The exception is the
-    // immortal encoding on refcount words narrower than 64 bits, where the
-    // dummy could actually be grown past wrap-around within a program's
-    // lifetime: there the increment's store is steered to the scratch word
-    // instead (the load stays plain, so nothing on the read path changes).
+    // No guard for tagged immediates under TBI: the increment lands on the
+    // dummy box's refcount (rc.set, the sole decrementing store, is steered
+    // away), so the 32-bit count grows and wraps after 2^32 references; the
+    // decrement expansion's unique branch rejects immediates, so a wrapped
+    // count frees nothing. The immortal encoding steers the increment's
+    // store away from a recognized dummy (the load stays plain, so nothing
+    // on the read path changes).
     auto countType = rewriter.getI32Type();
     TagEncoding encoding = specialPtrTagEncoding(op);
     bool steerNarrowImmortal = encoding == TagEncoding::Immortal &&
@@ -1683,10 +1689,19 @@ struct ReussirRcIncConversionPattern
           rewriter, op.getLoc(), mlir::LLVM::AtomicBinOp::add, refcntPtr, delta,
           mlir::LLVM::AtomicOrdering::monotonic);
     }
-    // Valid for immediates too: the dummy box's count starts at 2 and only
-    // ever grows, so `old >= 1` holds on that path as well.
+    // Under TBI an immediate's increment lands on its dummy box, whose 32-bit
+    // count grows and wraps through 0 after 2^32 references, so `old >= 1`
+    // is only assumed for real boxes there (the decrement expansion rejects
+    // immediates on its unique branch). Otherwise the dummy's count is never
+    // written and `old >= 1` holds for immediates as well.
     mlir::Value geOne = mlir::LLVM::ICmpOp::create(
         rewriter, op.getLoc(), mlir::LLVM::ICmpPredicate::uge, oldRefCnt, one);
+    if (encoding == TagEncoding::TBI && rcPtrTy.mayCarrySpecialPointerTag()) {
+      mlir::Value top = topByteOf(adaptor.getRcPtr(), op.getLoc(), rewriter);
+      geOne = mlir::LLVM::OrOp::create(
+          rewriter, op.getLoc(), geOne,
+          isTaggedImmediate(top, op.getLoc(), rewriter));
+    }
     mlir::LLVM::AssumeOp::create(rewriter, op.getLoc(), geOne);
 
     rewriter.eraseOp(op);
@@ -2015,6 +2030,61 @@ struct ReussirRcCompareImmortalConversionPattern
     }
     rewriter.replaceOpWithNewOp<mlir::LLVM::ICmpOp>(
         op, mlir::LLVM::ICmpPredicate::eq, adaptor.getRcPtr(), expected);
+    return mlir::success();
+  }
+};
+
+struct ReussirRcIsImmediateConversionPattern
+    : public mlir::OpConversionPattern<ReussirRcIsImmediateOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(ReussirRcIsImmediateOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    // Under TBI every immediate has `tag + 1` in its top byte and every real
+    // box has zero there, so one test covers all nullary arms. Under the
+    // immortal encoding an immediate is its arm's dummy box address, so the
+    // value is compared with each of them. No memory access either way.
+    mlir::Location loc = op.getLoc();
+    TagEncoding encoding = specialPtrTagEncoding(op);
+    if (encoding == TagEncoding::None) {
+      rewriter.replaceOpWithNewOp<mlir::LLVM::ConstantOp>(
+          op, rewriter.getI1Type(), rewriter.getBoolAttr(false));
+      return mlir::success();
+    }
+    if (encoding == TagEncoding::TBI) {
+      auto indexTy = llvm::cast<mlir::IntegerType>(
+          static_cast<const mlir::LLVMTypeConverter *>(getTypeConverter())
+              ->getIndexType());
+      if (indexTy.getWidth() != 64)
+        return op.emitOpError(
+            "the TBI encoding requires a 64-bit target; use the "
+            "arch-independent encoding instead");
+      rewriter.replaceOp(
+          op, isTaggedImmediate(topByteOf(adaptor.getRcPtr(), loc, rewriter),
+                                loc, rewriter));
+      return mlir::success();
+    }
+    mlir::Type ptrTy = mlir::LLVM::LLVMPointerType::get(rewriter.getContext());
+    auto module = op->getParentOfType<mlir::ModuleOp>();
+    auto variant =
+        llvm::cast<RecordType>(op.getRcPtr().getType().getElementType());
+    mlir::Value result;
+    for (size_t tag = 0, n = variant.getMembers().size(); tag < n; ++tag) {
+      if (!variant.isNullaryArm(tag))
+        continue;
+      auto dummy = tagDummyBox(module, loc, tag, encoding, rewriter);
+      mlir::Value address = mlir::LLVM::AddressOfOp::create(
+          rewriter, loc, ptrTy, dummy.getSymName());
+      mlir::Value same = mlir::LLVM::ICmpOp::create(
+          rewriter, loc, mlir::LLVM::ICmpPredicate::eq, adaptor.getRcPtr(),
+          address);
+      result =
+          result ? mlir::LLVM::OrOp::create(rewriter, loc, result, same)
+                       .getResult()
+                 : same;
+    }
+    rewriter.replaceOp(op, result);
     return mlir::success();
   }
 };
@@ -4018,6 +4088,7 @@ void populateBasicOpsLoweringToLLVMConversionPatterns(
       ReussirNullableCoerceConversionPattern, ReussirRcIncConversionPattern,
       ReussirRcTaggedConversionPattern,
       ReussirRcCompareImmortalConversionPattern,
+      ReussirRcIsImmediateConversionPattern,
       ReussirRcDecOpConversionPattern, ReussirRcCreateOpConversionPattern,
       ReussirRcCreateCompoundOpConversionPattern,
       ReussirRcCreateVariantOpConversionPattern,

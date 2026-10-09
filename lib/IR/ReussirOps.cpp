@@ -958,6 +958,21 @@ mlir::LogicalResult ReussirRcCompareImmortalOp::verify() {
   return mlir::success();
 }
 
+mlir::LogicalResult ReussirRcIsImmediateOp::verify() {
+  RcType rcType = getRcPtr().getType();
+  auto variantType = llvm::dyn_cast<RecordType>(rcType.getElementType());
+  if (!variantType || !variantType.isVariant() || !variantType.getComplete())
+    return emitOpError("RC element type must be a complete variant record");
+  bool hasNullaryArm = false;
+  for (size_t tag = 0, n = variantType.getMembers().size(); tag < n; ++tag)
+    hasNullaryArm |= variantType.isNullaryArm(tag);
+  if (!hasNullaryArm)
+    return emitOpError("the variant has no nullary arm, so no immediates");
+  if (!rcType.mayCarrySpecialPointerTag())
+    return emitOpError("the box type cannot carry a special pointer tag");
+  return mlir::success();
+}
+
 mlir::LogicalResult ReussirRcCreateVariantOp::verify() {
   RecordType variantType = getRecordType();
   if (!variantType)
