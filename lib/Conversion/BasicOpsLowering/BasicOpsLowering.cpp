@@ -2034,6 +2034,61 @@ struct ReussirRcCompareImmortalConversionPattern
   }
 };
 
+struct ReussirRcIsImmediateConversionPattern
+    : public mlir::OpConversionPattern<ReussirRcIsImmediateOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(ReussirRcIsImmediateOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    // Under TBI every immediate has `tag + 1` in its top byte and every real
+    // box has zero there, so one test covers all nullary arms. Under the
+    // immortal encoding an immediate is its arm's dummy box address, so the
+    // value is compared with each of them. No memory access either way.
+    mlir::Location loc = op.getLoc();
+    TagEncoding encoding = specialPtrTagEncoding(op);
+    if (encoding == TagEncoding::None) {
+      rewriter.replaceOpWithNewOp<mlir::LLVM::ConstantOp>(
+          op, rewriter.getI1Type(), rewriter.getBoolAttr(false));
+      return mlir::success();
+    }
+    if (encoding == TagEncoding::TBI) {
+      auto indexTy = llvm::cast<mlir::IntegerType>(
+          static_cast<const mlir::LLVMTypeConverter *>(getTypeConverter())
+              ->getIndexType());
+      if (indexTy.getWidth() != 64)
+        return op.emitOpError(
+            "the TBI encoding requires a 64-bit target; use the "
+            "arch-independent encoding instead");
+      rewriter.replaceOp(
+          op, isTaggedImmediate(topByteOf(adaptor.getRcPtr(), loc, rewriter),
+                                loc, rewriter));
+      return mlir::success();
+    }
+    mlir::Type ptrTy = mlir::LLVM::LLVMPointerType::get(rewriter.getContext());
+    auto module = op->getParentOfType<mlir::ModuleOp>();
+    auto variant =
+        llvm::cast<RecordType>(op.getRcPtr().getType().getElementType());
+    mlir::Value result;
+    for (size_t tag = 0, n = variant.getMembers().size(); tag < n; ++tag) {
+      if (!variant.isNullaryArm(tag))
+        continue;
+      auto dummy = tagDummyBox(module, loc, tag, encoding, rewriter);
+      mlir::Value address = mlir::LLVM::AddressOfOp::create(
+          rewriter, loc, ptrTy, dummy.getSymName());
+      mlir::Value same = mlir::LLVM::ICmpOp::create(
+          rewriter, loc, mlir::LLVM::ICmpPredicate::eq, adaptor.getRcPtr(),
+          address);
+      result =
+          result ? mlir::LLVM::OrOp::create(rewriter, loc, result, same)
+                       .getResult()
+                 : same;
+    }
+    rewriter.replaceOp(op, result);
+    return mlir::success();
+  }
+};
+
 struct ReussirRcCreateVariantOpConversionPattern
     : public mlir::OpConversionPattern<ReussirRcCreateVariantOp> {
   using OpConversionPattern::OpConversionPattern;
@@ -4033,6 +4088,7 @@ void populateBasicOpsLoweringToLLVMConversionPatterns(
       ReussirNullableCoerceConversionPattern, ReussirRcIncConversionPattern,
       ReussirRcTaggedConversionPattern,
       ReussirRcCompareImmortalConversionPattern,
+      ReussirRcIsImmediateConversionPattern,
       ReussirRcDecOpConversionPattern, ReussirRcCreateOpConversionPattern,
       ReussirRcCreateCompoundOpConversionPattern,
       ReussirRcCreateVariantOpConversionPattern,

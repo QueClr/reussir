@@ -12,11 +12,11 @@
 !tk = !reussir.token<align: 8, size: 24>
 // CHECK-LABEL: func.func @take
 // CHECK: [0] -> {
-// CHECK-NOT: compare_immortal
+// CHECK-NOT: is_immediate
 // CHECK: [1] -> {
 // CHECK: %[[CNT:.+]] = reussir.rc.fetch
 // CHECK: %[[ONE:.+]] = arith.cmpi eq, %[[CNT]]
-// CHECK: %[[IMM:.+]] = reussir.rc.compare_immortal(%arg0 : {{.+}}) tag(1)
+// CHECK: %[[IMM:.+]] = reussir.rc.is_immediate(%arg0 : {{.+}})
 // CHECK: %[[NOT:.+]] = arith.xori %[[IMM]], %true
 // CHECK: %[[BOTH:.+]] = arith.andi %[[ONE]], %[[NOT]]
 // CHECK: reussir.expect(%[[BOTH]] : i1, true)

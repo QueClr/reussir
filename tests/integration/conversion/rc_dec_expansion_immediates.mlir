@@ -14,17 +14,22 @@
 !pair_a = !reussir.record<compound "Pair::A" [value] { i64 }>
 !pair_b = !reussir.record<compound "Pair::B" [value] { i64, i64 }>
 !pair = !reussir.record<variant "Pair" { !pair_a, !pair_b }>
+!three_a = !reussir.record<compound "Three::A" [value] { }>
+!three_b = !reussir.record<compound "Three::B" [value] { }>
+!three_c = !reussir.record<compound "Three::C" [value] { }>
+!three_d = !reussir.record<compound "Three::D" [value] { i64, i64 }>
+!three = !reussir.record<variant "Three" { !three_a, !three_b, !three_c, !three_d }>
 
 module attributes { reussir.special_ptr_tag = "tbi" } {
   // CHECK-LABEL: func.func @dec_list
   // CHECK: %[[CNT:.+]] = reussir.rc.fetch
   // CHECK: %[[ONE:.+]] = arith.cmpi eq, %[[CNT]]
-  // CHECK: %[[IMM:.+]] = reussir.rc.compare_immortal(%arg0 : {{.+}}) tag(0)
+  // CHECK: %[[IMM:.+]] = reussir.rc.is_immediate(%arg0 : {{.+}})
   // CHECK: %[[NOT:.+]] = arith.xori %[[IMM]], %true
   // CHECK: %[[BOTH:.+]] = arith.andi %[[ONE]], %[[NOT]]
   // CHECK: %[[EXP:.+]] = reussir.expect(%[[BOTH]] : i1, true)
   // CHECK: scf.if %[[EXP]]
-  // CHECK-NOT: compare_immortal
+  // CHECK-NOT: is_immediate
   // CHECK: reussir.ref.drop
   // CHECK: reussir.rc.reinterpret
   // CHECK: } else {
@@ -35,10 +40,21 @@ module attributes { reussir.special_ptr_tag = "tbi" } {
 
   // No nullary arm, no immediates: no test.
   // CHECK-LABEL: func.func @dec_pair
-  // CHECK-NOT: compare_immortal
+  // CHECK-NOT: is_immediate
   // CHECK: return
   func.func @dec_pair(%rc: !reussir.rc<!pair>) -> !reussir.nullable<!reussir.token<align: 8, size: 24>> {
     %token = reussir.rc.dec (%rc : !reussir.rc<!pair>) : !reussir.nullable<!reussir.token<align: 8, size: 24>>
+    return %token : !reussir.nullable<!reussir.token<align: 8, size: 24>>
+  }
+
+  // Three nullary arms still take one test.
+  // CHECK-LABEL: func.func @dec_three
+  // CHECK: reussir.rc.is_immediate
+  // CHECK-NOT: is_immediate
+  // CHECK-NOT: compare_immortal
+  // CHECK: return
+  func.func @dec_three(%rc: !reussir.rc<!three>) -> !reussir.nullable<!reussir.token<align: 8, size: 24>> {
+    %token = reussir.rc.dec (%rc : !reussir.rc<!three>) : !reussir.nullable<!reussir.token<align: 8, size: 24>>
     return %token : !reussir.nullable<!reussir.token<align: 8, size: 24>>
   }
 }
@@ -55,9 +71,9 @@ module attributes { reussir.special_ptr_tag = "tbi" } {
 
 module attributes { reussir.special_ptr_tag = "immortal" } {
   // CHECK-LABEL: func.func @dec_list_immortal
-  // CHECK-NOT: compare_immortal
+  // CHECK-NOT: is_immediate
   // CHECK: reussir.ref.drop
-  // CHECK-NOT: compare_immortal
+  // CHECK-NOT: is_immediate
   // CHECK: return
   func.func @dec_list_immortal(%rc: !reussir.rc<!list>) -> !reussir.nullable<!reussir.token<align: 8, size: 24>> {
     %token = reussir.rc.dec (%rc : !reussir.rc<!list>) : !reussir.nullable<!reussir.token<align: 8, size: 24>>
