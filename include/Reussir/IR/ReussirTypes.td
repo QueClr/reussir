@@ -198,11 +198,14 @@ def ReussirRecordType
       // i.e. the GEP field index of that member in the converted LLVM struct.
       uint32_t getPhysicalMemberIndex(const mlir::DataLayout &dataLayout, uint32_t index) const;
       // Byte offset of logical member `index` of a compound record within
-      // the record, in the packed physical order. With packing, this is the
-      // offset of the member in the converted LLVM struct. Without packing,
-      // the type converter can widen a member to fill the padding before the
-      // next member. The wider integer can be more aligned, and then the
-      // LLVM struct does not follow this layout.
+      // the record, where the type converter places it: the members follow
+      // the physical order of getPhysicalMemberIndex (sorted by alignment
+      // when the dialect reorders record members, its default; declaration
+      // order with --no-pack-record-members), each at its natural alignment.
+      // This is not an LLVM packed struct. Without the reordering, the type
+      // converter can widen a member over the padding before the next
+      // member, and the converted LLVM struct can then place that member and
+      // the later ones at other offsets.
       uint64_t getMemberOffset(const mlir::DataLayout &dataLayout, uint32_t index) const;
       // Outlined drop/acquire glue symbols. The glue's body derives member
       // links from its argument reference's atomic kind (the whole-subtree

@@ -110,14 +110,14 @@ bool sameVariantField(RcType sourceRc, RcType targetRc,
           targetPayloadType.getMembers()[fieldIndex])
     return false;
 
-  // Without packing, the type converter can widen a member to fill the
-  // padding before the next member, and the wider integer can move the
-  // member itself. So the LLVM offset of member i also depends on members
-  // 0..i-1 and on the alignment of member i+1. Then those must agree too.
-  // With packing, members are sorted by alignment. If the size of each
-  // member is a multiple of its alignment, as for every type the frontend
-  // makes, no padding comes between two members, and the converter widens no
-  // member.
+  // Without the member reordering (--no-pack-record-members), the type
+  // converter can widen a member to fill the padding before the next member,
+  // and the wider integer can move the member itself. So the LLVM offset of
+  // member i also depends on members 0..i-1 and on the alignment of member
+  // i+1. Then those must agree too. With the reordering (the default),
+  // members are sorted by alignment. If the size of each member is a multiple
+  // of its alignment, as for every type the frontend makes, no padding comes
+  // between two members, and the converter widens no member.
   if (auto *dialect =
           sourcePayloadType.getContext()->getLoadedDialect<ReussirDialect>();
       dialect && !dialect->getPackRecordMembers()) {
