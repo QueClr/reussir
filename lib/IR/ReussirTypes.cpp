@@ -118,6 +118,10 @@ mlir::Type parseTypeWithCapabilityAndAtomicKind(mlir::AsmParser &parser) {
       return {};
     }
   }
+  // The type ends here: anything else (`!reussir.rc<i64, rigid>`) is an
+  // error, not text to drop.
+  if (parser.parseGreater().failed())
+    return {};
   Capability capValue = capability ? *capability : DefaultCap;
   AtomicKind atomicValue =
       atomicKind ? *atomicKind : reussir::AtomicKind::normal;
