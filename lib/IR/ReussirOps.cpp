@@ -2973,43 +2973,39 @@ mlir::LogicalResult ReussirScfYieldOp::verify() {
   mlir::Type yieldedType = getValue() ? getValue().getType() : mlir::Type{};
   mlir::Type expectedType = mlir::Type{};
   bool allowImplicitArrayResult = false;
-  // The rdlock and with-unique-view checks look at the immediate parent
-  // (not the nearest ancestor of a type): either body may itself sit inside
-  // a dispatch region — a `set` in a match arm is the everyday case — and
-  // this yield belongs to the op whose single-block body it terminates.
-  if (auto create =
-          llvm::dyn_cast<ReussirArrayCreateOp>(getOperation()->getParentOp()))
+  // Every check looks at the immediate parent, not at the nearest ancestor of
+  // a given type. This yield terminates the body of its immediate parent, and
+  // that op can itself sit in a region of another of these ops: an
+  // `array.with_unique_view` (an array `set`) in a match arm, or a
+  // `record.dispatch` without results (an expanded variant drop) in an arm of
+  // a `nullable.dispatch` that yields a value. `ParentOneOf` makes sure that
+  // the immediate parent is one of the five ops below.
+  mlir::Operation *parent = getOperation()->getParentOp();
+  if (auto create = llvm::dyn_cast_if_present<ReussirArrayCreateOp>(parent))
     expectedType =
         llvm::cast<ArrayType>(create.getRcPtr().getType().getElementType())
             .getElementType();
-  else if (auto rdlockParent = llvm::dyn_cast_if_present<ReussirCellRdlockOp>(
-               getOperation()->getParentOp()))
+  else if (auto rdlockParent =
+               llvm::dyn_cast_if_present<ReussirCellRdlockOp>(parent))
     expectedType = rdlockParent.getOutput() ? rdlockParent.getOutput().getType()
                                             : mlir::Type{};
   else if (auto arrayParent =
                llvm::dyn_cast_if_present<ReussirArrayWithUniqueViewOp>(
-                   getOperation()->getParentOp())) {
+                   parent)) {
     expectedType = arrayParent.getResult() ? arrayParent.getResult().getType()
                                            : mlir::Type{};
     allowImplicitArrayResult =
         expectedType && expectedType == arrayParent.getArray().getType();
   } else if (auto nullableParent =
-          getOperation()->getParentOfType<ReussirNullableDispatchOp>())
+                 llvm::dyn_cast_if_present<ReussirNullableDispatchOp>(parent))
     expectedType = nullableParent.getValue()
                        ? nullableParent.getValue().getType()
                        : mlir::Type{};
   else if (auto recordParent =
-               getOperation()->getParentOfType<ReussirRecordDispatchOp>())
+               llvm::dyn_cast_if_present<ReussirRecordDispatchOp>(parent))
     expectedType = recordParent.getValue() ? recordParent.getValue().getType()
                                            : mlir::Type{};
-  else if (auto arrayParent =
-               getOperation()
-                   ->getParentOfType<ReussirArrayWithUniqueViewOp>()) {
-    expectedType = arrayParent.getResult() ? arrayParent.getResult().getType()
-                                           : mlir::Type{};
-    allowImplicitArrayResult =
-        expectedType && expectedType == arrayParent.getArray().getType();
-  } else
+  else
     llvm_unreachable("unexpected parent operation");
 
   if (expectedType && !yieldedType && !allowImplicitArrayResult)

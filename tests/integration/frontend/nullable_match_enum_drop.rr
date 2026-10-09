@@ -1,0 +1,58 @@
+// Regression test: a `match` on a `Nullable` that yields a value, where the
+// arm that does not use `x` releases it. AcquireDropExpansion expands the drop
+// of the enum `T` into a `reussir.record.dispatch` without results, inside that
+// arm of the `reussir.nullable.dispatch`. The yield verifier used to check the
+// yields of the inner dispatch against the result of the outer dispatch, and
+// rejected them with "parent operation expected a value, but nothing is
+// yielded".
+
+// RUN: %rrc %s -o %t.o --relocation-mode pic
+// RUN: %cc %t.o %S/nullable_match_enum_drop.c -o %t.exe -L%library_path -lreussir_rt %rpath_flag %extra_sys_libs
+// RUN: %t.exe
+
+struct [shared] B { v: u64 }
+enum T { N(u64, T, T), L }
+
+fn head(t : T) -> u64 {
+    match t { T::L => 1, T::N(a, l, r) => a }
+}
+
+fn tree(v : u64) -> T { T::N{v, T::N{v + 1, T::L{}, T::L{}}, T::L{}} }
+
+// The Null arm releases `x`.
+fn pick(nb : Nullable<B>, x : T) -> T {
+    match nb {
+        Nullable::NonNull(b) => { x },
+        Nullable::Null => { T::L{} }
+    }
+}
+
+// The NonNull arm releases `x`.
+fn pick_flipped(nb : Nullable<B>, x : T) -> T {
+    match nb {
+        Nullable::NonNull(b) => { T::N{b.v, T::L{}, T::L{}} },
+        Nullable::Null => { x }
+    }
+}
+
+// The result is not counted; the Null arm releases `x`.
+fn head_or_zero(nb : Nullable<B>, x : T) -> u64 {
+    match nb {
+        Nullable::NonNull(b) => { head(x) },
+        Nullable::Null => { 0 }
+    }
+}
+
+pub fn null_drops(v : u64) -> u64 { head(pick(Nullable::Null, tree(v))) }
+pub fn nonnull_keeps(v : u64) -> u64 { head(pick(Nullable::NonNull{B{v}}, tree(v + 10))) }
+pub fn flipped_null(v : u64) -> u64 { head(pick_flipped(Nullable::Null, tree(v))) }
+pub fn flipped_nonnull(v : u64) -> u64 { head(pick_flipped(Nullable::NonNull{B{v}}, tree(v + 10))) }
+pub fn scalar_null(v : u64) -> u64 { head_or_zero(Nullable::Null, tree(v)) }
+pub fn scalar_nonnull(v : u64) -> u64 { head_or_zero(Nullable::NonNull{B{v}}, tree(v + 10)) }
+
+extern "C" trampoline "null_drops_ffi" = null_drops;
+extern "C" trampoline "nonnull_keeps_ffi" = nonnull_keeps;
+extern "C" trampoline "flipped_null_ffi" = flipped_null;
+extern "C" trampoline "flipped_nonnull_ffi" = flipped_nonnull;
+extern "C" trampoline "scalar_null_ffi" = scalar_null;
+extern "C" trampoline "scalar_nonnull_ffi" = scalar_nonnull;
