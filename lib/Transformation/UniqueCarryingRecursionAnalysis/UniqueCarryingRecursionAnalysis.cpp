@@ -26,12 +26,19 @@
 ///
 /// # Provenance lattice
 ///
-/// Per rc value: `Unknown` (bottom) or a pair `{fresh, carriedArgs}` meaning
+/// Per rc value: `Unknown` (top) or a pair `{fresh, carriedArgs}` meaning
 /// "on some path this is a fresh create / argument i". Join is the pointwise
 /// union: the value is unique iff every contributor is, so a joined value is
 /// proven unique under an assumption set exactly when *all* its carried bits
-/// are assumed (freshness needs no assumption). `Unknown` is absorbing in
-/// proofs (never unique) and the identity of the join.
+/// are assumed (freshness needs no assumption). `Unknown` stands for a
+/// contributor of unknown provenance (a field load, an opaque call, a shared
+/// value): it is never unique and absorbs the join, since a value that is
+/// unknown on one path and fresh on another is not unique. The empty pair
+/// (no fresh bit, no argument) is bottom, the identity of the join: no value
+/// reaches this point (yet) — the start of a join over arms, and the
+/// optimistic start of a function summary in the fixpoint below. A value
+/// that is never a shared heap cell is bottom too: the poison of an
+/// unreachable arm and a nullary constructor's tagged immediate.
 ///
 /// # Sharing discipline (the part provenance alone cannot see)
 ///
@@ -64,8 +71,9 @@
 ///
 /// # Fixpoint
 ///
-/// Function summaries start at bottom and are recomputed from the previous
-/// round until stable — a Kleene iteration of a monotone map (joins only
+/// Function summaries start at bottom (a declaration's at `Unknown`: its
+/// body is not visible) and are recomputed from the previous round until
+/// stable — a Kleene iteration of a monotone map (joins only
 /// accumulate bits, bounded by the argument count), so it terminates at the
 /// least fixpoint. Optimism about recursion is sound coinductively: any
 /// value a terminating execution actually returns is produced by a finite
@@ -90,12 +98,14 @@
 #include "Reussir/IR/ReussirOps.h"
 #include "Reussir/IR/ReussirTypes.h"
 #include "Reussir/Transformation/Passes.h"
+#include "Reussir/Transformation/SpecialPointerTag.h"
 
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/DenseSet.h>
 #include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
 #include <mlir/Dialect/SCF/IR/SCF.h>
+#include <mlir/Dialect/UB/IR/UBOps.h>
 #include <mlir/IR/Location.h>
 #include <mlir/IR/SymbolTable.h>
 #include <mlir/Pass/Pass.h>
@@ -112,11 +122,19 @@ static constexpr llvm::StringLiteral kCarryingUniquenessAttr =
 static constexpr llvm::StringLiteral kUniqueCloneAttr = "reussir.unique_clone";
 
 struct UniqueCarryingValue {
-  bool unknown = true;
+  bool unknown = false;
   llvm::BitVector carriedArgs;
   bool fresh = false;
 
-  static UniqueCarryingValue getUnknown() { return {}; }
+  // No contributing path (yet): the identity of the join.
+  static UniqueCarryingValue getBottom() { return {}; }
+
+  // Unknown provenance: absorbing, never unique.
+  static UniqueCarryingValue getUnknown() {
+    UniqueCarryingValue value;
+    value.unknown = true;
+    return value;
+  }
 
   static UniqueCarryingValue getArgument(unsigned index) {
     UniqueCarryingValue value;
@@ -140,10 +158,8 @@ struct UniqueCarryingValue {
 
   static UniqueCarryingValue join(const UniqueCarryingValue &lhs,
                                   const UniqueCarryingValue &rhs) {
-    if (lhs.unknown)
-      return rhs;
-    if (rhs.unknown)
-      return lhs;
+    if (lhs.unknown || rhs.unknown)
+      return getUnknown();
 
     UniqueCarryingValue joined;
     joined.unknown = false;
@@ -172,6 +188,10 @@ struct UniqueCarryingValue {
   void print(llvm::raw_ostream &os) const {
     if (unknown) {
       os << "Unknown";
+      return;
+    }
+    if (!fresh && carriedArgs.none()) {
+      os << "Bottom";
       return;
     }
     os << "{fresh=" << (fresh ? "true" : "false") << ", args=[";
@@ -288,6 +308,21 @@ public:
 private:
   UniqueCarryingValue evaluateResult(mlir::Operation *op,
                                      unsigned resultIndex) {
+    // Values that are never a live heap cell another reference can see
+    // contribute nothing (bottom): the poison of an unreachable arm (after
+    // a panic; it is never produced) and a nullary constructor's tagged
+    // immediate when the special-pointer-tag scheme is on for its type
+    // (`rc.assume_unique` then drops its assumption for immediates). As
+    // `Unknown` they would absorb the join and block sound specializations.
+    if (llvm::isa<mlir::ub::PoisonOp>(op))
+      return UniqueCarryingValue::getBottom();
+    if (auto tagged = llvm::dyn_cast<ReussirRcTaggedOp>(op)) {
+      auto module = op->getParentOfType<mlir::ModuleOp>();
+      bool immediates = module && module->hasAttr(kSpecialPtrTagAttr) &&
+                        tagged.getRcPtr().getType().mayCarrySpecialPointerTag();
+      return immediates ? UniqueCarryingValue::getBottom()
+                        : UniqueCarryingValue::getUnknown();
+    }
     // A create initializes its count to 1 — unless `skip_rc` elides that
     // initialization (reuse/TRMC machinery), in which case the box keeps
     // whatever count it already had.
@@ -313,8 +348,7 @@ private:
       const UniqueCarryingValue &summary = it->second[resultIndex];
       if (summary.unknown)
         return summary;
-      UniqueCarryingValue mapped = UniqueCarryingValue::getUnknown();
-      mapped.unknown = false;
+      UniqueCarryingValue mapped = UniqueCarryingValue::getBottom();
       mapped.fresh = summary.fresh;
       for (int argIndex = summary.carriedArgs.find_first(); argIndex >= 0;
            argIndex = summary.carriedArgs.find_next(argIndex)) {
@@ -362,7 +396,7 @@ private:
   template <typename YieldOpT>
   UniqueCarryingValue joinRegionYields(mlir::Operation *op,
                                        unsigned resultIndex) {
-    UniqueCarryingValue joined = UniqueCarryingValue::getUnknown();
+    UniqueCarryingValue joined = UniqueCarryingValue::getBottom();
     for (mlir::Region &region : op->getRegions()) {
       if (region.empty())
         continue;
@@ -412,12 +446,25 @@ static bool areEqualSummaries(const FunctionSummaryMap &lhs,
   return true;
 }
 
+// The start of the fixpoint: bottom for a function with a body (optimism
+// about recursion), `Unknown` for a declaration, whose results may be
+// anything.
+static llvm::SmallVector<UniqueCarryingValue>
+initialFunctionSummary(mlir::func::FuncOp funcOp) {
+  return llvm::SmallVector<UniqueCarryingValue>(
+      funcOp.getNumResults(), funcOp.isDeclaration()
+                                  ? UniqueCarryingValue::getUnknown()
+                                  : UniqueCarryingValue::getBottom());
+}
+
 static llvm::SmallVector<UniqueCarryingValue>
 computeFunctionSummary(mlir::func::FuncOp funcOp,
                        const FunctionSummaryMap &summaries) {
+  if (funcOp.isDeclaration())
+    return initialFunctionSummary(funcOp);
   ProvenanceEvaluator evaluator(summaries);
-  llvm::SmallVector<UniqueCarryingValue> summary(
-      funcOp.getNumResults(), UniqueCarryingValue::getUnknown());
+  llvm::SmallVector<UniqueCarryingValue> summary =
+      initialFunctionSummary(funcOp);
   funcOp.walk([&](mlir::func::ReturnOp returnOp) {
     for (auto [index, operand] : llvm::enumerate(returnOp.getOperands())) {
       if (!isRcType(operand.getType()))
@@ -691,7 +738,11 @@ struct UniqueCarryingRecursionAnalysisPass
         op->removeAttr(kCarryingUniquenessAttr);
     });
 
+    // Calls to a symbol outside this map (not a `func.func`) are Unknown.
     FunctionSummaryMap summaries;
+    moduleOp.walk([&](mlir::func::FuncOp funcOp) {
+      summaries[funcOp.getName()] = initialFunctionSummary(funcOp);
+    });
 
     while (true) {
       FunctionSummaryMap nextSummaries;

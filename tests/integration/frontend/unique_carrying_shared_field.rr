@@ -1,0 +1,37 @@
+// A uniqueness-carrying self call must not assume uniqueness of an argument
+// that is unique on one path but shared on another. `f` returns its argument
+// `x` on the base path, so it carries argument 0, and its self call passes
+// `pick(..)`: a fresh cell, or `p.0`, a field of `p` that `p` still holds
+// (count 2). The analysis used to join the unknown provenance of `p.0` away
+// (`Unknown` was the identity of its join), proved the argument unique, and
+// called a `.unique` clone asserting count == 1 at entry; `bump` then rebuilt
+// the shared cell in place, so `p.0` read 101 instead of 1 at -O aggressive.
+
+// RUN: %rrc %s -o %t.o --relocation-mode pic -Oaggressive
+// RUN: %cc %t.o %S/unique_carrying_shared_field.c -o %t.exe -L%library_path -lreussir_rt %rpath_flag %extra_sys_libs
+// RUN: %t.exe
+// RUN: %rrc %s -o %t.default.o --relocation-mode pic
+// RUN: %cc %t.default.o %S/unique_carrying_shared_field.c -o %t.default.exe -L%library_path -lreussir_rt %rpath_flag %extra_sys_libs
+// RUN: %t.default.exe
+
+struct B(u64)
+struct P(B)
+
+// Rebuilds b: in place when b's cell is unique.
+fn bump(b : B) -> B { B { b.0 + 100 } }
+
+// a (unique here) or p.0 (shared with p).
+fn pick(a : B, p : P, n : u64) -> B { if n == 2 { p.0 } else { a } }
+
+fn f(x : B, p : P, n : u64) -> B {
+    if n == 0 { x } else { f(pick(bump(x), p, n), p, n - 1) }
+}
+
+// r.0 * 1000 + p.0.0: 101001 (r is p.0 rebuilt; p.0 is untouched).
+pub fn shared_field(n : u64) -> u64 {
+    let p = P { B { 1 } };
+    let r = f(B { 5 }, p, n);
+    r.0 * 1000 + p.0.0
+}
+
+extern "C" trampoline "unique_carrying_shared_field" = shared_field;

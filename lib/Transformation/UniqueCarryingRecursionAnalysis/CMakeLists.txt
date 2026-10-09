@@ -13,4 +13,5 @@ add_mlir_library(MLIRReussirUniqueCarryingRecursionAnalysis
   MLIRReussir
   MLIRSCFDialect
   MLIRTransforms
+  MLIRUBDialect
 )
