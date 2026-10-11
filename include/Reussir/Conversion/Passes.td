@@ -98,10 +98,12 @@ def ReussirConvertToSTDPass
     borrows, mutable slot accesses, and MLIR SCF guards.
     Cell get acquires the exact loaded value, set drops the old slot before
     storing the caller-owned replacement, and rmw moves the old and replacement
-    values through its region without implicit ownership traffic.
+    values through its region without implicit ownership traffic. Payloads
+    that cannot be memref elements use the ownership-neutral
+    `reussir.cell.store_payload` bridge, lowered directly to an LLVM store.
     Loop-shaped atomic read-modify-writes (region bodies and the multiply
     kinds LLVM cannot express as a single atomicrmw) become `scf.while` retry
-    loops committed with the straight-line `reussir.ref.cmpxchg` bridge, so
+    loops committed with the straight-line `reussir.cell.cmpxchg` bridge, so
     all Cell control flow is crafted as structured IR here. Straight-line
     atomic accesses (get, set, native atomicrmw kinds, and the bridge itself)
     remain intact for the LLVM lowering, which performs no CFG changes.
