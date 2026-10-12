@@ -57,6 +57,7 @@ namespace reussir {
 // the new function's accesses would silently escape instrumentation.
 //
 //===----------------------------------------------------------------------===//
+inline constexpr llvm::StringRef kMustTailCallAttr = "reussir.musttail";
 inline constexpr llvm::StringRef kSanitizeAttr = "reussir.sanitize";
 
 // Appends the module's sanitizer attribute strings (if any) to `func`'s

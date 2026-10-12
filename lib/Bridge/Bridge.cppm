@@ -179,6 +179,7 @@ void createLoweringPipeline(mlir::PassManager &pm,
   reussir::ReussirAcquireDropExpansionPassOptions options;
   options.expandDecrement = true;
   options.outlineRecord = true;
+  options.tailRecursiveDrops = opt != REUSSIR_OPT_TPDE;
   pm.addPass(reussir::createReussirAcquireDropExpansionPass(options));
 
   {
@@ -207,7 +208,7 @@ void createLoweringPipeline(mlir::PassManager &pm,
   pm.addPass(createConvertSCFToCFPass());
 #endif
   pm.addPass(createReussirBasicOpsLoweringPass());
-  pm.addPass(createConvertToLLVMPass());
+  pm.addPass(createReussirConvertToLLVMPass());
   pm.addPass(createReconcileUnrealizedCastsPass());
   pm.addPass(createCSEPass());
   pm.addPass(createCanonicalizerPass());
