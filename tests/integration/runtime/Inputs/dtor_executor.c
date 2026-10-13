@@ -4,15 +4,19 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#ifndef _WIN32
 #include <sys/resource.h>
+#endif
 #ifdef __cplusplus
 extern "C" {
 #endif
 typedef struct ReussirDtorExecutor ReussirDtorExecutor;
 typedef struct ReussirDtorTask ReussirDtorTask;
-typedef struct ReussirDtorStep ReussirDtorStep;
-typedef ReussirDtorStep (*ReussirDtorStart)(void *buffer, void *object);
-typedef ReussirDtorStep (*ReussirDtorResume)(void *buffer, bool cancel);
+typedef struct ReussirDtorResumeAction ReussirDtorResumeAction;
+typedef const ReussirDtorResumeAction *(*ReussirDtorStart)(
+    void *buffer, void *object, const ReussirDtorTask **child);
+typedef const ReussirDtorResumeAction *(*ReussirDtorResume)(
+    void *buffer, bool cancel, const ReussirDtorTask **child);
 typedef struct ReussirDtorRoutine {
   ReussirDtorStart start;
   size_t size;
@@ -22,9 +26,9 @@ struct ReussirDtorTask {
   const ReussirDtorRoutine *routine;
   void *object;
 };
-struct ReussirDtorStep {
-  ReussirDtorResume resume;
-  const ReussirDtorTask *child;
+struct ReussirDtorResumeAction {
+  ReussirDtorResume callback;
+  size_t offset;
 };
 size_t __reussir_dtor_executor_size(void);
 size_t __reussir_dtor_executor_align(void);
@@ -60,11 +64,13 @@ void check_payload(void *ptr) {
 }
 #endif
 int main(void) {
+#ifndef _WIN32
   struct rlimit limit;
   assert(!getrlimit(RLIMIT_STACK, &limit));
   if (limit.rlim_cur > 256 * 1024)
     limit.rlim_cur = 256 * 1024;
   assert(!setrlimit(RLIMIT_STACK, &limit));
+#endif
   size_t size = __reussir_dtor_executor_size();
   size_t align = __reussir_dtor_executor_align();
   void *allocation = malloc(size + align - 1);

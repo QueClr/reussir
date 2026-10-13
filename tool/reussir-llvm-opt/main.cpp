@@ -31,6 +31,7 @@
 
 #include "Reussir/LLVMPass/AllocationSimplication.h"
 #include "Reussir/LLVMPass/LinearRecurrence.h"
+#include "Reussir/LLVMPass/RetconDrop.h"
 #include "Reussir/LLVMPass/RuntimeFunctionAttributor.h"
 #include "Reussir/LLVMPass/SizeAttributes.h"
 
@@ -70,8 +71,7 @@ std::optional<llvm::OptimizationLevel> parseLevel(llvm::StringRef level) {
 
 int main(int argc, char **argv) {
   llvm::InitLLVM initLLVM(argc, argv);
-  llvm::cl::ParseCommandLineOptions(argc, argv,
-                                    "Reussir LLVM pass driver\n");
+  llvm::cl::ParseCommandLineOptions(argc, argv, "Reussir LLVM pass driver\n");
 
   llvm::LLVMContext context;
   llvm::SMDiagnostic diagnostic;
@@ -117,6 +117,18 @@ int main(int argc, char **argv) {
   passBuilder.registerPipelineParsingCallback(
       [](llvm::StringRef name, llvm::ModulePassManager &mpm,
          llvm::ArrayRef<llvm::PassBuilder::PipelineElement>) {
+        if (name == "reussir-retcon-drop") {
+          reussir::llvmpass::populateRetconDropPasses(mpm);
+          return true;
+        }
+        if (name == "reussir-retcon-deferred-free") {
+          mpm.addPass(reussir::llvmpass::RetconDropDeferredFreePass());
+          return true;
+        }
+        if (name == "reussir-retcon-drop-abi") {
+          mpm.addPass(reussir::llvmpass::RetconDropABIPass());
+          return true;
+        }
         if (name == "reussir-recursion-linearization") {
           mpm.addPass(reussir::llvmpass::RecursionLinearizationPass());
           return true;
@@ -150,8 +162,7 @@ int main(int argc, char **argv) {
     mpm.addPass(passBuilder.buildPerModuleDefaultPipeline(*level));
   } else if (llvm::Error error =
                  passBuilder.parsePassPipeline(mpm, passPipeline)) {
-    llvm::errs() << argv[0] << ": " << llvm::toString(std::move(error))
-                 << "\n";
+    llvm::errs() << argv[0] << ": " << llvm::toString(std::move(error)) << "\n";
     return 1;
   }
   mpm.run(*module, mam);
