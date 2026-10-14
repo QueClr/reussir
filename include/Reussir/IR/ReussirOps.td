@@ -1177,8 +1177,10 @@ def ReussirArrayToIfrtOp
 }
 
 def ReussirArrayFromIfrtOp
-    : ReussirArrayOp<"from_ifrt", [MemoryEffects<[MemRead, MemWrite, MemAlloc]>,
-                                  DeclareOpInterfaceMethods<TokenAcceptorInterface>]> {
+    : ReussirArrayOp<
+          "from_ifrt", [AttrSizedOperandSegments,
+                        MemoryEffects<[MemRead, MemWrite, MemAlloc]>,
+                        DeclareOpInterfaceMethods<TokenAcceptorInterface>]> {
   let summary = "Adopt an IFRT call result into an RC target array";
   let description = [{
     Consumes a result of `ifrt.Call`, `ifrt.CallLoadedExecutable`, or
@@ -1188,17 +1190,21 @@ def ReussirArrayFromIfrtOp
     Input/output aliases follow IFRT donation rules: borrowed RC inputs cannot
     be aliased, while donated IFRT-owned inputs may become results.
 
-    Metadata must match as for `array.to_ifrt`. Dynamic extents come from the
-    IFRT result. The optional token supplies only the host RC metadata box.
-    Dynamic extents are recovered from unpadded buffer dimensions using concrete,
-    even sharding; all shards must have equal local shapes. Dimension queries
-    may wait for the backend to compute the shape. No device allocation or data
-    copy occurs. Requires OpenXLA.
+    Metadata must match as for `array.to_ifrt`. Optional `extents` supply all
+    dynamic global dimensions, in dimension order. These are required when any
+    dynamic dimension is partitioned: padded local shapes cannot determine the
+    logical global shape. Otherwise dimensions may be queried from the result.
+    Supplied extents and static dimensions must be compatible with physical
+    shard shapes under ceil division. The caller supplies the exact logical
+    extents: physical buffers cannot distinguish extents with the same ceiling. Dimension queries may wait for the
+    backend. The token supplies only the host RC metadata box; no device
+    allocation or data copy occurs. Requires OpenXLA.
   }];
-  let arguments = (ins AnyType:$source, Optional<ReussirTokenType>:$token);
+  let arguments = (ins AnyType:$source, Variadic<Index>:$extents,
+      Optional<ReussirTokenType>:$token);
   let results = (outs ReussirRcArrayType:$array);
   let assemblyFormat = [{
-    $source (`token` `(` $token^ `:` qualified(type($token)) `)`)? attr-dict
+    $source (`extents` `(` $extents^ `)`)? (`token` `(` $token^ `:` qualified(type($token)) `)`)? attr-dict
     `:` type($source) `->` qualified(type($array))
   }];
   let hasVerifier = 1;
@@ -1209,10 +1215,10 @@ def ReussirArrayToDeviceOp
                                   DeclareOpInterfaceMethods<TokenAcceptorInterface>]> {
   let summary = "Upload a host view into an owned target array";
   let description = [{
-    Copies a strided host memref to a single-device target array. Shape and
-    element type must match; dynamic extents are checked at runtime.
+    Copies a strided host memref to a target array, distributing padded shards
+    and replicas across its ordered devices. Shape and element type must match; dynamic extents are checked at runtime.
     Borrows initialized, immutable host storage until return. The result owns
-    its device buffer; no host pointer escapes. Backend errors abort.
+    its device buffers; no host pointer escapes. Backend errors abort.
     The optional token supplies the host RC descriptor box, not device storage.
   }];
   let arguments = (ins AnyMemRef:$source, Optional<ReussirTokenType>:$token);
@@ -1228,8 +1234,9 @@ def ReussirArrayToHostOp
     : ReussirArrayOp<"to_host", [MemoryEffects<[MemRead, MemWrite]>]> {
   let summary = "Download a target array into existing host storage and wait";
   let description = [{
-    Copies a single-device target array into an exclusive, dense row-major
-    host memref. Shape and element type must match; dynamic extents and strides
+    Gathers a target array into an exclusive, dense row-major
+    host memref, selecting one copy of each replicated tile. Shape and element
+    type must match; dynamic extents and strides
     are checked at runtime. Borrows the array and destination until completion.
     The destination may be uninitialized; successful return initializes all
     elements. Backend errors abort. This operation does not allocate a host array.
