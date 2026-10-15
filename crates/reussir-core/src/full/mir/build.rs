@@ -516,6 +516,17 @@ impl<'tcx> Builder<'_, 'tcx> {
             }
             raw::Kind::If(c, t, f) => M::If(self.expr_ref(c), self.expr_ref(t), self.expr_ref(f)),
             raw::Kind::RegionRun(x) => M::RegionRun(self.expr_ref(x)),
+            raw::Kind::Async { captures, body } => {
+                let captures: Vec<_> = captures
+                    .iter()
+                    .map(|(v, t)| (VarId(*v), self.ty(t)))
+                    .collect();
+                M::Async(mir::ClosureExpr {
+                    captures: self.tcx.alloc_slice(&captures),
+                    params: &[],
+                    body: self.expr_ref(body),
+                })
+            }
             raw::Kind::Proj(base, path) => {
                 let base = self.expr_ref(base);
                 M::Proj(base, self.tcx.alloc_slice(path))
@@ -654,6 +665,16 @@ impl<'tcx> Builder<'_, 'tcx> {
                 M::Match(scrut, self.tree(tree))
             }
         };
+        if let M::Async(c) = &kind {
+            if let Err(error) = crate::async_check::mir(&c.captures, &c.body, ty) {
+                self.error.get_or_insert(error);
+            }
+        }
+        if let M::TensorOp { op, args } = &kind {
+            if let Err(error) = crate::async_check::mir_tensor_op(*op, ty, args) {
+                self.error.get_or_insert(error);
+            }
+        }
         mir::Expr {
             id: self.ids.fresh(),
             kind,
@@ -729,6 +750,54 @@ mod tests {
     use crate::full::mono::monomorphize;
     use crate::semi::elaborate;
     use crate::{surface, with_tcx};
+
+    #[test]
+    fn qualified_nominal_builtin_names_roundtrip() {
+        for name in [
+            "Future",
+            "Token",
+            "Tensor",
+            "DevArray",
+            "DefaultPlacement",
+            "Arc",
+            "Nullable",
+            "Cell",
+            "RefCell",
+            "Atomic",
+            "Mutex",
+            "FlatLock",
+            "RwLock",
+        ] {
+            with_tcx(|tcx| {
+                let input = format!(
+                    "record @rec : value struct app::{name} {{ \"n\": i32 }}; fn @identity(v0 (x): app::{name}) -> app::{name} {{ v0 : app::{name} }}"
+                );
+                let parsed = parse_program(tcx, &input).expect("qualified nominal builtin name");
+                let printed = Printer::new(&parsed.defs, &parsed.names).program(&parsed.program);
+                let reparsed =
+                    parse_program(tcx, &printed).expect("reparse qualified nominal name");
+                assert_eq!(
+                    printed,
+                    Printer::new(&reparsed.defs, &reparsed.names).program(&reparsed.program)
+                );
+            });
+        }
+    }
+
+    #[test]
+    fn async_captures_roundtrip() {
+        roundtrip(
+            r#"
+            import core::intrinsic::tensor;
+            #[kernel] fn helper<T>(x: Tensor<[T; 8]>, i:i64) -> Future<Tensor<[T;2]>> {
+                async { let slice=tensor::dynamic_slice<Tensor<[T;2]>>(x,(i,)); slice }
+            }
+            #[kernel] pub fn forward(x:Tensor<[f32;8]>,i:i64)->Tensor<[f32;2]> {
+                tensor::async_done(helper(x,i))
+            }
+"#,
+        );
+    }
 
     /// Print a program, parse it back, re-print, and assert text equality
     /// (the text-faithful round-trip contract).

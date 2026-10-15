@@ -348,7 +348,13 @@ impl<'a, 'tcx> Elaborator<'a, 'tcx> {
     pub(super) fn infer_expr(&mut self, e: &surface::Expr) -> Expr<'tcx> {
         let span = Some(e.span());
         let kind = e.kind();
+        // Member syntax needs receiver inference before its kernel eligibility
+        // can be decided. infer_postfix_call permits only a Future receiver in
+        // this context; every other member retains the host-operation rejection.
+        let method_call = matches!(&kind, surface::ExprKind::CallExpr(callee, _)
+            if !callee.parenthesized() && matches!(callee.kind(), surface::ExprKind::AccessChain(..)));
         if self.inside_kernel
+            && !method_call
             && !matches!(
                 &kind,
                 surface::ExprKind::Var(_)
@@ -360,6 +366,7 @@ impl<'a, 'tcx> Elaborator<'a, 'tcx> {
                     | surface::ExprKind::While(..)
                     | surface::ExprKind::If(..)
                     | surface::ExprKind::Match(..)
+                    | surface::ExprKind::AsyncExpr(_)
                     | surface::ExprKind::FuncCallExpr(_)
                     | surface::ExprKind::ConstExpr(_)
                     | surface::ExprKind::BinOpExpr(..)
@@ -404,6 +411,7 @@ impl<'a, 'tcx> Elaborator<'a, 'tcx> {
             surface::ExprKind::AccessChain(base, accs) => self.infer_access(base, accs, span),
             surface::ExprKind::Assign(dst, acc, src) => self.infer_assign(dst, acc, src, span),
             surface::ExprKind::RegionalExpr(body) => self.infer_region(body, span),
+            surface::ExprKind::AsyncExpr(body) => self.infer_async(body, span),
             surface::ExprKind::Lambda(lam) => self.infer_lambda(lam, span),
             surface::ExprKind::Match(scrut, arms) => self.infer_match(scrut, arms, span),
         }
@@ -1265,6 +1273,13 @@ impl<'a, 'tcx> Elaborator<'a, 'tcx> {
             raw = ty;
         }
 
+        if self.inside_kernel
+            && !matches!(self.infer.shallow_resolve(raw).kind(), TyKind::Future(_))
+        {
+            self.error(span, "host operations are not allowed in a kernel");
+            return self.poison(span);
+        }
+
         if matches!(self.infer.shallow_resolve(raw).kind(), TyKind::Tuple(_)) {
             let Some((idx, field_ty)) = self.project_step(raw, last, span) else {
                 return self.poison(span);
@@ -1272,6 +1287,34 @@ impl<'a, 'tcx> Elaborator<'a, 'tcx> {
             indices.push(idx);
             let callee = self.mk_expr(ExprKind::Proj(Box::new(base), indices), field_ty, span);
             return self.closure_apply(callee, args, span);
+        }
+
+        if matches!(self.infer.shallow_resolve(raw).kind(), TyKind::Future(_)) {
+            let surface::Access::Named(name) = last else {
+                self.error(span, "a Future has no positional fields");
+                return self.poison(span);
+            };
+            let receiver = if indices.is_empty() {
+                base
+            } else {
+                self.mk_expr(ExprKind::Proj(Box::new(base), indices), raw, span)
+            };
+            // The former's anchor supplies the ordinary inherent method path;
+            // receiver inference and kernel checks are shared with records.
+            if let Some(anchor) = self.lang.get(crate::semi::lang::LangItem::Former(
+                crate::semi::lang::FormerItem::TensorFuture,
+            )) && let Some(method) = self.dot_method_candidate(anchor, *name)
+            {
+                return self.infer_method_call(receiver, Some(anchor), method, *name, args, span);
+            }
+            self.error(
+                span,
+                format!(
+                    "no method `{}` on Future; load its core declaration to use inherent methods",
+                    self.sym(*name)
+                ),
+            );
+            return self.poison(span);
         }
 
         let arced = matches!(raw.kind(), TyKind::Arc(_));
@@ -2425,10 +2468,132 @@ impl<'a, 'tcx> Elaborator<'a, 'tcx> {
         )
     }
 
-    /// (REGION) `Γ ⊢ region { body } ⇒ (RegionRun(hb) : freeze(T))`: set
-    /// `inside_region` for the body (`body ⇒ T`), restore it, and stamp the node with
-    /// the head-only `freeze_region(T)` (Regional|Flex → Rigid). A nested region is a
-    /// diagnostic. This is the only rule that rewrites the synthesized type.
+    /// Capture kernel tensor SSA values for an isolated asynchronous operation.
+    fn infer_async(&mut self, body: &surface::Expr, span: Option<Span>) -> Expr<'tcx> {
+        if !self.inside_kernel {
+            self.error(
+                span,
+                "async blocks are only allowed inside a #[kernel] function",
+            );
+            return self.poison(span);
+        }
+        let body = self.infer_expr(body);
+        let result = self.infer.resolve(body.ty);
+        if !matches!(
+            result.kind(),
+            TyKind::Tensor { .. } | TyKind::Generic(_) | TyKind::Hole(_)
+        ) {
+            self.error(span, "an async block must return exactly one Tensor");
+        }
+        let mut free = Vec::new();
+        free_vars(&body, &mut free);
+        let captures = free
+            .into_iter()
+            .map(|v| (v, self.infer.resolve(self.vars.def(v).ty)))
+            .collect();
+        let ty = self.tcx.mk_future(&[result]);
+        self.mk_expr(
+            ExprKind::Async(ClosureExpr {
+                captures,
+                params: Vec::new(),
+                body: Box::new(body),
+            }),
+            ty,
+            span,
+        )
+    }
+
+    fn infer_kernel_tensor_intrinsic(
+        &mut self,
+        op: crate::intrinsic::TensorFn,
+        fc: &surface::FuncCall,
+        span: Option<Span>,
+    ) -> Expr<'tcx> {
+        use crate::intrinsic::TensorFn;
+        if !self.inside_kernel {
+            self.error(
+                span,
+                "this tensor intrinsic is only allowed inside a #[kernel] function",
+            );
+            return self.poison(span);
+        }
+        let nargs = if op == TensorFn::AsyncDone { 1 } else { 2 };
+        if fc.args.len() != nargs {
+            self.error(
+                span,
+                format!("`{}` expects exactly {nargs} arguments", op.as_str()),
+            );
+            return self.poison(span);
+        }
+        let args: Vec<_> = fc.args.iter().map(|a| self.infer_expr(a)).collect();
+        if op == TensorFn::Slice {
+            if let TyKind::Tuple(fields) = self.infer.resolve(args[1].ty).kind() {
+                let index = self.tcx.mk_int(crate::semi::ty::IntTy::Signed(64));
+                let expected = self.tcx.mk_tuple(&vec![index; fields.len()]);
+                self.expect(args[1].ty, expected, span);
+            }
+        }
+        if op == TensorFn::CollectivePermute {
+            if let TyKind::Tuple(fields) = self.infer.resolve(args[1].ty).kind() {
+                let index = self.tcx.mk_int(crate::semi::ty::IntTy::Signed(64));
+                let pair = self.tcx.mk_tuple(&[index, index]);
+                self.expect(
+                    args[1].ty,
+                    self.tcx.mk_tuple(&vec![pair; fields.len()]),
+                    span,
+                );
+            }
+        }
+        let result = match op {
+            TensorFn::CollectivePermute => {
+                if !fc.ty_args.is_empty() {
+                    self.error(span, "`collective_permute` takes no type arguments");
+                }
+                args[0].ty
+            }
+            TensorFn::DynamicSlice | TensorFn::Slice => {
+                let [Some(t)] = fc.ty_args.as_slice() else {
+                    self.error(
+                        span,
+                        format!(
+                            "`{}` requires exactly one explicit result Tensor type",
+                            op.as_str()
+                        ),
+                    );
+                    return self.poison(span);
+                };
+                let result = self.eval_type(t);
+                if let (TyKind::Tensor { elem: a, .. }, TyKind::Tensor { elem: b, .. }) =
+                    (self.infer.resolve(args[0].ty).kind(), result.kind())
+                {
+                    self.expect(*a, *b, span);
+                }
+                result
+            }
+            TensorFn::AsyncDone => {
+                if !fc.ty_args.is_empty() {
+                    self.error(span, "`async_done` takes no type arguments");
+                }
+                match self.infer.resolve(args[0].ty).kind() {
+                    TyKind::Future(ps) if ps.len() == 1 => ps[0],
+                    _ => {
+                        self.error(
+                            span,
+                            "`async_done` expects a Future with exactly one Tensor payload",
+                        );
+                        return self.poison(span);
+                    }
+                }
+            }
+            _ => unreachable!(),
+        };
+        let types: Vec<_> = args.iter().map(|a| self.infer.resolve(a.ty)).collect();
+        if let Err(reason) = crate::async_check::tensor_op(op, self.infer.resolve(result), &types) {
+            self.error(span, reason);
+        }
+        self.mk_expr(ExprKind::TensorOp { op, args }, result, span)
+    }
+
     fn infer_region(&mut self, body: &surface::Expr, span: Option<Span>) -> Expr<'tcx> {
         if self.inside_region {
             self.error(span, "cannot create a nested region");
@@ -2832,7 +2997,26 @@ impl<'a, 'tcx> Elaborator<'a, 'tcx> {
         if fc.name.segments.first().map(|&k| self.sym(k)) != Some("core") {
             return None;
         }
-        if self.inside_kernel {
+        // Core also declares ordinary helper bodies (including inherent
+        // methods). Only intrinsic anchors and fallback intrinsic paths use
+        // this checker; a loaded ordinary definition follows normal calls.
+        if self
+            .resolve_function_ref(&fc.name)
+            .is_some_and(|def| !self.lang.is_intrinsic_def(def))
+        {
+            return None;
+        }
+        if self.inside_kernel
+            && !(fc
+                .name
+                .segments
+                .last()
+                .is_some_and(|&s| self.sym(s) == "tensor")
+                && matches!(
+                    self.sym(fc.name.basename),
+                    "dynamic_slice" | "slice" | "collective_permute" | "async_done"
+                ))
+        {
             self.error(span, "host intrinsics are not allowed in a kernel");
             return Some(self.poison(span));
         }
@@ -3592,6 +3776,15 @@ impl<'a, 'tcx> Elaborator<'a, 'tcx> {
             );
             return self.poison(span);
         };
+        if matches!(
+            op,
+            TensorFn::DynamicSlice
+                | TensorFn::Slice
+                | TensorFn::CollectivePermute
+                | TensorFn::AsyncDone
+        ) {
+            return self.infer_kernel_tensor_intrinsic(op, fc, span);
+        }
         if !fc.ty_args.is_empty() {
             self.error(
                 span,
@@ -3605,6 +3798,10 @@ impl<'a, 'tcx> Elaborator<'a, 'tcx> {
         let expected_args = match op {
             TensorFn::Of | TensorFn::Materialize => 1,
             TensorFn::Dim => 2,
+            TensorFn::DynamicSlice
+            | TensorFn::Slice
+            | TensorFn::CollectivePermute
+            | TensorFn::AsyncDone => unreachable!(),
         };
         if fc.args.len() != expected_args {
             self.error(
@@ -3620,6 +3817,10 @@ impl<'a, 'tcx> Elaborator<'a, 'tcx> {
         let base = self.infer_expr(&fc.args[0]);
         let bty = self.infer.shallow_resolve(base.ty);
         match op {
+            TensorFn::DynamicSlice
+            | TensorFn::Slice
+            | TensorFn::CollectivePermute
+            | TensorFn::AsyncDone => unreachable!(),
             TensorFn::Of => {
                 let TyKind::Array { elem, dims } = *bty.kind() else {
                     let shown = self.infer.resolve(base.ty);
@@ -4340,6 +4541,14 @@ impl<'a, 'tcx> Elaborator<'a, 'tcx> {
         // it — where the annotation belongs — and suppressed on the ancestors.
         e.kind = self.zonk_kind(e.kind, e.span);
         e.ty = self.zonk_ty(e.ty, e.span);
+        let validation = match &e.kind {
+            ExprKind::Async(c) => crate::async_check::hir(&c.captures, &c.body, e.ty),
+            ExprKind::TensorOp { op, args } => crate::async_check::hir_tensor_op(*op, e.ty, args),
+            _ => Ok(()),
+        };
+        if let Err(reason) = validation {
+            self.error(e.span, reason);
+        }
         e
     }
 
@@ -4445,6 +4654,19 @@ impl<'a, 'tcx> Elaborator<'a, 'tcx> {
                 args: args.into_iter().map(|e| self.zonk_expr(e)).collect(),
             },
             Closure(c) => Closure(ClosureExpr {
+                captures: c
+                    .captures
+                    .into_iter()
+                    .map(|(v, t)| (v, self.zonk_ty(t, span)))
+                    .collect(),
+                params: c
+                    .params
+                    .into_iter()
+                    .map(|(v, t)| (v, self.zonk_ty(t, span)))
+                    .collect(),
+                body: zb(self, c.body),
+            }),
+            Async(c) => Async(ClosureExpr {
                 captures: c
                     .captures
                     .into_iter()
@@ -4594,7 +4816,7 @@ fn var_occurrences<'tcx>(e: &Expr<'tcx>, used: &mut Vec<VarId>, bound: &mut Vec<
             var_occurrences(target, used, bound);
             args.iter().for_each(|e| var_occurrences(e, used, bound));
         }
-        Closure(c) => {
+        Closure(c) | Async(c) => {
             bound.extend(c.params.iter().map(|&(v, _)| v));
             var_occurrences(&c.body, used, bound);
         }

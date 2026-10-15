@@ -102,7 +102,25 @@ Variant: raw::Variant =
 Sym: String = <s:"ident"> => s.into();
 
 Name: &'input str = {
+    <name:BareName> => name,
+    "Future" => "Future",
+    "Nullable" => "Nullable",
+    "Cell" => "Cell",
+    "RefCell" => "RefCell",
+    "Atomic" => "Atomic",
+    "Mutex" => "Mutex",
+    "FlatLock" => "FlatLock",
+    "RwLock" => "RwLock",
+    "Arc" => "Arc",
+    "Tensor" => "Tensor",
+    "Token" => "Token",
+    "DevArray" => "DevArray",
+    "DefaultPlacement" => "DefaultPlacement",
+};
+
+BareName: &'input str = {
     "while" => "while",
+    "async" => "async",
     <name:"ident"> => name,
     "transform" => "transform",
     "transform_anchor" => "transform_anchor",
@@ -170,6 +188,7 @@ Ty: raw::Ty = {
     "Arc" "<" <t:Ty> ">" => raw::Ty::Arc(Box::new(t)),
     <cap:Cap> <path:TyPathArgs>
         => raw::Ty::Record { cap, path: path.0, args: path.1 },
+
     "[" <elem:Ty> ";" <dims:CommaPlus<Extent>> "]"
         => raw::Ty::Array { elem: Box::new(elem), dims },
     "DefaultPlacement" => raw::Ty::DefaultPlacement,
@@ -217,7 +236,7 @@ Extent: u64 = {
 /// (`pkg::m::Cell::<u64>`), factored into one recursive production so the
 /// grammar stays LR(1): after each `::` the next token — an identifier vs
 /// `<` — decides between another path segment and the type-argument list.
-TyPathArgs: (String, Vec<raw::Ty>) = <first:Name> <tail:TyPathArgsTail> => {
+TyPathArgs: (String, Vec<raw::Ty>) = <first:BareName> <tail:TyPathArgsTail> => {
     let (rest, args) = tail;
     (format!("{first}{rest}"), args)
 };
@@ -294,6 +313,7 @@ Atom: raw::Kind = {
     "(" <l:Expr> <op:CmpOp> <r:Expr> ")" => raw::Kind::Cmp(l, op, r),
     "(" <e:Expr> "as" <t:Ty> ")" => raw::Kind::Cast(e, t),
     "region" "{" <e:Expr> "}" => raw::Kind::RegionRun(e),
+    "async" "[" <captures:Comma<ClosureParam>> "]" "{" <body:Expr> "}" => raw::Kind::Async { captures, body },
     "proj" "(" <base:Expr> <idxs:("," <"int">)*> ")"
         => raw::Kind::Proj(base, idxs.iter().map(raw::small_u32).collect()),
     "assign" "(" <dst:Expr> "," <field:"int"> "," <src:Expr> ")"
@@ -450,6 +470,7 @@ extern {
         "uncovered" => Token::Uncovered,
         "unreachable" => Token::Unreachable,
         "region" => Token::Region,
+        "async" => Token::Async,
         "as" => Token::As,
         "closure" => Token::Closure,
         "apply" => Token::Apply,
