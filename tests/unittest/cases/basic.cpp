@@ -2,6 +2,7 @@
 #include "Reussir/IR/ReussirOps.h"
 #include "Reussir/IR/ReussirTypes.h"
 #include <gtest/gtest.h>
+#include <mlir/AsmParser/AsmParser.h>
 #include <mlir/CAPI/IR.h>
 #include <mlir/IR/Verifier.h>
 
@@ -34,6 +35,49 @@ TEST_F(ReussirTest, StablehloAsyncTypesAreCheckedAndDistinct) {
   EXPECT_EQ(reussirStablehloFutureTypeGet(ctx, 1, &future).ptr, nullptr);
 #else
   EXPECT_EQ(token.ptr, nullptr);
+#endif
+}
+
+TEST_F(ReussirTest, DeviceArrayIfrtViewsPreserveMetadata) {
+  MlirType nullType{nullptr};
+  EXPECT_EQ(reussirArrayTypeGetIfrtType(nullType).ptr, nullptr);
+  EXPECT_EQ(reussirIfrtArrayGetDevices(nullType).ptr, nullptr);
+  EXPECT_EQ(reussirIfrtArrayGetHloSharding(nullType).ptr, nullptr);
+  EXPECT_FALSE(reussirIfrtArrayRequiresGlobalExtents(nullType));
+  auto scalar = wrap(mlir::IntegerType::get(context.get(), 32));
+  EXPECT_EQ(reussirArrayTypeGetIfrtType(scalar).ptr, nullptr);
+  auto target =
+      mlir::parseAttribute("#reussir.target<devices = [3]>", context.get());
+  ASSERT_TRUE(target);
+  int64_t shape[] = {0, mlir::ShapedType::kDynamic};
+  auto descriptor =
+      reussirArrayTypeGetWithTarget(2, shape, scalar, wrap(target));
+  ASSERT_NE(descriptor.ptr, nullptr);
+  auto view = reussirArrayTypeGetIfrtType(descriptor);
+#ifdef REUSSIR_ENABLE_OPENXLA
+  ASSERT_NE(view.ptr, nullptr);
+  auto expected = mlir::parseType(
+      "!ifrt.array<tensor<0x?xi32>, #ifrt.sharding_unspecified, [3]>",
+      context.get());
+  ASSERT_TRUE(expected);
+  EXPECT_EQ(unwrap(view), expected);
+  EXPECT_NE(reussirIfrtArrayGetDevices(view).ptr, nullptr);
+  EXPECT_EQ(reussirIfrtArrayGetHloSharding(view).ptr, nullptr);
+  EXPECT_FALSE(reussirIfrtArrayRequiresGlobalExtents(view));
+  auto tiled = mlir::parseType(
+      "!ifrt.array<tensor<?xi32>, #ifrt.sharding_param<2 to [0] on 2>, [1, 0]>",
+      context.get());
+  ASSERT_TRUE(tiled);
+  EXPECT_TRUE(reussirIfrtArrayRequiresGlobalExtents(wrap(tiled)));
+  EXPECT_NE(reussirIfrtArrayGetHloSharding(wrap(tiled)).ptr, nullptr);
+  auto replicated = mlir::parseType(
+      "!ifrt.array<tensor<?xi32>, #ifrt.sharding_param<1 to [0] on 2>, [1, 0]>",
+      context.get());
+  ASSERT_TRUE(replicated);
+  EXPECT_FALSE(reussirIfrtArrayRequiresGlobalExtents(wrap(replicated)));
+
+#else
+  EXPECT_EQ(view.ptr, nullptr);
 #endif
 }
 

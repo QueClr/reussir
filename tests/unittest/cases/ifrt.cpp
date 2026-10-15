@@ -260,6 +260,70 @@ mlir::LogicalResult packageKernels(mlir::ModuleOp module) {
 }
 } // namespace
 
+TEST_F(ReussirTest, IfrtKernelOptimizationIsOptionalBeforeSerialization) {
+  mlir::DialectRegistry registry;
+  registerIfrtDialectsAndPasses(registry);
+  context->appendDialectRegistry(registry);
+  context->loadAllAvailableDialects();
+  // Integer addition avoids floating-point signed-zero qualifications. Check
+  // every payload: serialization may retain distinct kernel symbol locations.
+  std::string source = jitSource.str();
+  for (size_t pos = 0; (pos = source.find("f32", pos)) != std::string::npos;)
+    source.replace(pos, 3, "i32");
+  const std::string original = "return %arg : tensor<8xi32>";
+  const std::string replacement = R"mlir(
+        %zero = stablehlo.constant dense<0> : tensor<8xi32>
+        %sum = stablehlo.add %arg, %zero : tensor<8xi32>
+        return %sum : tensor<8xi32>)mlir";
+  for (size_t pos = 0;
+       (pos = source.find(original, pos)) != std::string::npos;) {
+    source.replace(pos, original.size(), replacement);
+    pos += replacement.size();
+  }
+  for (bool prepare : {false, true}) {
+    for (bool optimize : {false, true}) {
+      SCOPED_TRACE(prepare ? "prepare" : "direct JIT");
+      SCOPED_TRACE(optimize ? "optimized" : "unoptimized");
+      auto module = parse(source);
+      ASSERT_TRUE(module);
+      mlir::PassManager pm(context.get());
+      if (prepare) {
+        ReussirPreparePjrtPassOptions options;
+        options.optimizeKernels = optimize;
+        pm.addPass(createReussirPreparePjrtPass(options));
+      } else {
+        ReussirIFRTJustInTimeTransformPassOptions options;
+        options.optimizeKernels = optimize;
+        pm.addPass(createReussirIFRTJustInTimeTransformPass(options));
+      }
+      ASSERT_TRUE(mlir::succeeded(pm.run(*module)));
+      auto payloads = module->getOps<ReussirIFRTBytecodeOp>();
+      ASSERT_FALSE(payloads.empty());
+      for (auto code : payloads) {
+        EXPECT_TRUE(mlir::succeeded(code.verify()));
+        auto kernel = mlir::parseSourceString<mlir::ModuleOp>(
+            code.getBytecode(), context.get());
+        ASSERT_TRUE(kernel);
+        EXPECT_TRUE(mlir::succeeded(mlir::verify(*kernel)));
+        unsigned additions = 0;
+        kernel->walk([&](mlir::Operation *op) {
+          additions += op->getName().getStringRef() == "stablehlo.add";
+        });
+        EXPECT_EQ(additions, optimize ? 0u : 1u);
+      }
+      if (!prepare) {
+        // Optimization belongs to the detached payload, not the host's source
+        // module. Source kernels remain intact until the separate symbol DCE.
+        unsigned sourceAdditions = 0;
+        module->walk([&](mlir::Operation *op) {
+          sourceAdditions += op->getName().getStringRef() == "stablehlo.add";
+        });
+        EXPECT_EQ(sourceAdditions, 2u);
+      }
+    }
+  }
+}
+
 TEST_F(ReussirTest, IfrtBytecodeGlobalPreservesPayload) {
   mlir::DialectRegistry registry;
   registerIfrtDialectsAndPasses(registry);
@@ -486,6 +550,7 @@ TEST_F(ReussirTest, IfrtJitFailureDoesNotPartiallyRewriteCalls) {
   std::string badKernel = jitSource.str();
   badKernel.insert(badKernel.rfind("return %arg"),
                    "%bad = arith.addf %arg, %arg : tensor<8xf32>\n");
+  badKernel.replace(badKernel.rfind("return %arg"), 11, "return %bad");
   std::string badOptions = jitSource.str();
   badOptions.insert(
       badOptions.find(" : (!I)", badOptions.find("@second::@main")),

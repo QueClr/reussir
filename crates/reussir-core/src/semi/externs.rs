@@ -249,6 +249,7 @@ impl<'tcx> Elaborator<'_, 'tcx> {
                 default_cap: rec.default_cap,
                 repr_fixed: rec.repr_fixed,
                 placement: rec.placement.clone(),
+                launch: rec.launch,
                 ffi: rec.ffi.clone(),
                 fields: rec.fields.as_ref().map(|f| remap.fields(f)),
                 regional_generics: remap.generic_ids(&rec.regional_generics),
@@ -723,6 +724,15 @@ impl<'tcx> Remapper<'_, '_, 'tcx> {
                 ty_args: self.tys(ty_args),
                 args: self.exprs(args),
             },
+            ExprKind::Launch {
+                target,
+                ty_args,
+                args,
+            } => ExprKind::Launch {
+                target: self.def(*target),
+                ty_args: self.tys(ty_args),
+                args: self.exprs(args),
+            },
             ExprKind::CompoundCall {
                 target,
                 ty_args,
@@ -1086,6 +1096,10 @@ mod tests {
                 assert_eq!(file, mapped_file);
                 assert!(span.is_some());
             }
+            let launch_item = LangItem::Intrinsic(crate::semi::lang::IntrinsicItem::PjrtLaunch);
+            let launch_def = elab.lang.get(launch_item).expect("reloaded launch anchor");
+            assert!(elab.lang.is_intrinsic_def(launch_def));
+            assert_eq!(elab.lang_item_site(launch_item).unwrap().0, mapped_file);
             let source = "import core::intrinsic::pjrt::DevArray as Device; import core::intrinsic::pjrt::DefaultPlacement as Placement; pub fn f(x: Device<f32, Placement>) -> DevArray<f32> { x }";
             let parse = reussir_syntax::parse_with_interner(source, interner.clone());
             assert!(parse.ok(), "{:#?}", parse.errors);

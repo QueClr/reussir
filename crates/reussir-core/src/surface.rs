@@ -773,6 +773,18 @@ impl Expr {
         }
     }
 
+    /// A syntactic named function reference, used by special intrinsic forms.
+    /// A generic path shares constructor syntax, but braces are not a reference.
+    pub fn function_reference(&self) -> Option<(Path, SmallVec<[Option<Type>; 2]>)> {
+        match self.node.kind() {
+            VarExpr => Some((call_path_of(&self.node), SmallVec::new())),
+            CtorCallExpr if child_node(&self.node, CtorArgList).is_none() => {
+                Some((call_path_of(&self.node), type_args_of(&self.node)))
+            }
+            _ => None,
+        }
+    }
+
     /// Whether the source spelled this expression inside parentheses.
     pub fn parenthesized(&self) -> bool {
         self.parenthesized
@@ -1055,6 +1067,7 @@ pub struct Record {
     /// default per-constructor sizing. Only meaningful for enums.
     pub repr_fixed: bool,
     pub placement: Option<String>,
+    pub launch: Option<crate::launch::LaunchConfig>,
 }
 
 /// An `extern "C" trampoline` declaration. The ABI and symbol strings are
@@ -1496,6 +1509,7 @@ fn record_of(node: &ResolvedNode, kind: RecordKind) -> Record {
         default_cap,
         repr_fixed,
         placement: None,
+        launch: None,
     }
 }
 

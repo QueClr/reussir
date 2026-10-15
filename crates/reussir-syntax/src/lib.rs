@@ -1146,6 +1146,22 @@ mod tests {
             .unwrap();
     }
     #[test]
+    fn launch_is_an_ordinary_identifier_and_call() {
+        for source in [
+            "fn launch(x: i32) -> i32 { x }",
+            "fn f() { let launch = |x| x; launch(1) }",
+            "fn f() { core::intrinsic::pjrt::launch(kernel) }",
+            "fn f(x: T) { pjrt::launch<P>(module::kernel<T>, x, (x, ()),) }",
+            "#[launch(donation = \"none\")] struct [value] P {}",
+        ] {
+            let parsed = super::parse(source);
+            assert!(parsed.ok(), "{source}: {:?}", parsed.errors);
+            let _ = json_of(source);
+        }
+        assert!(!super::parse("fn f() { launch<P> kernel<T>(x) }").ok());
+    }
+
+    #[test]
     fn while_expression_grammar() {
         for source in [
             "fn f() { while [] (false) { () } }",
