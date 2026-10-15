@@ -610,7 +610,15 @@ impl<'c, 'p, 'tcx> TypeCtx<'c, 'p, 'tcx> {
                 }
             })
             .collect::<Result<Vec<_>>>()?;
-        array_with_target(&shape, scalar_ty(self.context, elem)?, target)
+        // PJRT distinguishes signed and unsigned buffers. Host integer SSA is
+        // signless, but a device descriptor must retain the kernel element type.
+        let element = if let TyKind::Int(IntTy::Unsigned(width)) = elem.kind() {
+            Type::parse(self.context, &format!("ui{width}"))
+                .ok_or_else(|| LoweringError("invalid unsigned device element type".into()))?
+        } else {
+            scalar_ty(self.context, elem)?
+        };
+        array_with_target(&shape, element, target)
             .ok_or_else(|| LoweringError("invalid device array target or shape".into()))
     }
 
@@ -622,12 +630,17 @@ impl<'c, 'p, 'tcx> TypeCtx<'c, 'p, 'tcx> {
         let TyKind::Array { elem, dims } = *ty.kind() else {
             return err("array payload requested for a non-array type");
         };
-        if reussir_core::semi::ty::has_dynamic_extent(dims) {
-            // Frontend-complete, backend-pending: the strided-header box.
-            return err("dynamic-extent arrays do not lower yet");
-        }
         let elem = self.mlir_ty(elem)?;
-        let shape: Vec<i64> = dims.iter().map(|&d| d as i64).collect();
+        let shape: Vec<i64> = dims
+            .iter()
+            .map(|&d| {
+                if d == reussir_core::semi::ty::DYNAMIC_EXTENT {
+                    dynamic_dimension_size() as i64
+                } else {
+                    d as i64
+                }
+            })
+            .collect();
         Ok(array(&shape, elem))
     }
 
