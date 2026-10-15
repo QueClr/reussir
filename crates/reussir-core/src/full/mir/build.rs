@@ -532,6 +532,30 @@ impl<'tcx> Builder<'_, 'tcx> {
                 }
             }
             raw::Kind::Seq(items) => M::Seq(self.expr_slice(items)),
+            raw::Kind::While {
+                state,
+                initial,
+                condition,
+                body,
+            } => {
+                let initial = self.expr_ref(initial);
+                let condition = self.expr_ref(condition);
+                let body = self.expr_ref(body);
+                if initial.ty != ty
+                    || body.ty != ty
+                    || !(matches!(condition.ty.kind(), TyKind::Bool)
+                        || matches!(condition.ty.kind(), TyKind::Tensor { elem, dims } if dims.is_empty() && matches!(elem.kind(), TyKind::Bool)))
+                {
+                    self.error =
+                        Some("while state/body types must agree and condition must be bool or rank-zero Tensor<bool>".into());
+                }
+                M::While {
+                    state: VarId(*state),
+                    initial,
+                    condition,
+                    body,
+                }
+            }
             raw::Kind::Tuple(items) => {
                 let fields = self.expr_slice(items);
                 if !matches!(ty.kind(), TyKind::Tuple(types) if types.len() == fields.len() && types.iter().zip(fields.iter()).all(|(&t, f)| t == f.ty))
@@ -1227,5 +1251,28 @@ mod tests {
         };
         let err = raw::string_entries(&[entry]).unwrap_err();
         assert!(err.contains("does not match payload"), "{err}");
+    }
+    #[test]
+    fn while_state_roundtrips() {
+        roundtrip("pub fn while() -> u64 { 1 }");
+        roundtrip(
+            "pub fn f(n: u64) -> (u64, (u64, ())) { while [i = 0, pair = (1, ())] (i < n) { (i + 1, (pair.0 + i, ())) } }",
+        );
+        roundtrip("pub fn f() { while [] (false) { () } }");
+    }
+    #[test]
+    fn rejects_inconsistent_while_annotations() {
+        crate::with_tcx(|tcx| {
+            for text in [
+                "pub fn @f() -> i64 { while [v0 = 0 : i64] (0 : i64) { 0 : i64 } : i64 }",
+                "pub fn @f() -> i64 { while [v0 = 0 : i64] (true : bool) { true : bool } : i64 }",
+                "pub fn @f() -> bool { while [v0 = 0 : i64] (true : bool) { 0 : i64 } : bool }",
+            ] {
+                assert!(
+                    parse_program(tcx, text).is_err(),
+                    "accepted malformed while: {text}"
+                );
+            }
+        });
     }
 }
