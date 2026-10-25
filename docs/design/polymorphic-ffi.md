@@ -268,12 +268,29 @@ records** (struct or enum), and `Nat`/`Int`. Everything else — value/regional 
 diagnostic at the ground instance (monomorphization), where the offending
 type is concrete.
 
-`Nat` and `Int` cross as the raw rcgmp handle, `*mut c_void`. The wrapper
-owns the argument's reference like any other, and releases it after the body
-returns, so the body only borrows the handle and must not release it; to
-return a parameter, the body retains it first. A returned handle carries one
-reference, which the caller owns. The body calls the rcgmp runtime's C entry
-points (`RCGMP/Runtime/Mpz.h`) directly.
+A parameter or result the signature declares as `Nat` or `Int` crosses as the
+raw rcgmp handle, `*mut c_void`. The wrapper owns the argument's reference
+like any other, and releases it after the body returns, so the body only
+borrows the handle and must not release it; to return a parameter, the body
+retains it first. A returned handle carries one reference, which the caller
+owns. The body calls the rcgmp runtime's C entry points
+(`RCGMP/Runtime/Mpz.h`) directly.
+
+Everywhere else `Nat` and `Int` are the owned handle `reussir_rt::rcgmp::Mpz`:
+as a type argument of an opaque type (`Vec<Nat>` is
+`::reussir_rt::collections::vec::Vec<::reussir_rt::rcgmp::Mpz>`), in `[:T:]`,
+and as a parameter or result declared as a generic instantiated at `Nat` or
+`Int`. `Mpz` is a `#[repr(transparent)]` pointer that owns one reference:
+`Clone` retains it (`rcgmp_mpz_retain`), `Drop` releases it
+(`rcgmp_mpz_release`), and `PartialEq`/`Ord` compare values
+(`rcgmp_mpz_cmp`), so a Rust container stores, clones, drops and orders the
+integers it holds. It is the generic's ordinary owned value: a body may move
+an argument into a container or return it, and the wrapper releases nothing
+after the body; a returned `Mpz` moves its reference to the caller, the C
+ABI still passing a pointer. `into_raw`, `from_raw` and `as_ptr` convert
+between the two spellings, e.g. `Mpz::from_raw(rcgmp_mpz_retain(n, 0))`
+stores a borrowed `Nat` parameter `n`. These methods are inlined into the
+code that uses them, so `reussir-rt` itself references no rcgmp symbol.
 
 ## Exposing a new type
 
@@ -350,7 +367,8 @@ gather polyffi modules yet and rejects programs containing them.
   `ffi_imports`/`ffi_textures`/`ffi_rc_glue`/`ffi_trait_glue` and
   `RecordLayout::Opaque`, round-tripping through both textual IRs;
 * runtime adapters: `crates/reussir-rt/src/bridge.rs` (the four behavior
-  traits and transparent `Bridge<T>` standard-trait implementations);
+  traits and transparent `Bridge<T>` standard-trait implementations) and
+  `crates/reussir-rt/src/rcgmp.rs` (the owned `Nat`/`Int` handle `Mpz`);
 * codegen: `crates/reussir-codegen/src/lower/{mod,ty,expr}.rs` (rc'd
   `ffi_object` types, polyffi/trampoline emission, lifecycle glue, borrowed
   comparison entries, and hook functions);

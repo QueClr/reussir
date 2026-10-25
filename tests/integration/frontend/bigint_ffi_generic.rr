@@ -1,0 +1,133 @@
+// UNSUPPORTED: darwin
+// `Nat` and `Int` as type arguments of the polymorphic FFI. A Rust
+// `Vec<Nat>` holds owned handles (`reussir_rt::rcgmp::Mpz`), whose clones
+// retain and whose drops release; a parameter declared as a generic
+// instantiated at `Nat` moves into the body, which may store it, and a
+// generic result moves out to the caller. A parameter declared `Nat` stays
+// the borrowed raw handle of `bigint_ffi.rr`. Heap values make a missed or
+// doubled release visible; `sanitizer/bigint-ffi-generic-asan.rr` checks the
+// balance.
+
+// REQUIRES: rcgmp
+// RUN: %rrc --package-root %S/../../../library/core/src --package-name core --builtin --emit rri -o %t.core.rri
+// RUN: %rrc %s --package-name bigintffigeneric --extern core=%t.core.rri --emit mlir --no-source-locations -o %t.texture.mlir
+// RUN: %FileCheck %s --check-prefix=TEXTURE --input-file=%t.texture.mlir
+// RUN: %FileCheck %s --check-prefix=ABSENT --input-file=%t.texture.mlir
+// RUN: %rrc %s --package-name bigintffigeneric --extern core=%t.core.rri -o %t.o --relocation-mode pic
+// RUN: %cc %t.o %S/bigint_ffi_generic.c -o %t.exe -L%library_path -lreussir_rt %rcgmp_runtime %rpath_flag %extra_sys_libs
+// RUN: %t.exe
+
+extern "rust" [{
+    use reussir_rt::collections::btree_set::BTreeSet as RSet;
+    use reussir_rt::collections::vec::Vec as RVec;
+    use reussir_rt::rcgmp::Mpz;
+    unsafe extern "C" {
+        fn rcgmp_mpz_retain(value: *mut ::std::ffi::c_void, atomic: u32) -> *mut ::std::ffi::c_void;
+    }
+}];
+
+#[ffi(rust = "::reussir_rt::collections::vec::Vec")]
+pub struct Vec<T>;
+
+#[ffi(rust = "::reussir_rt::collections::btree_set::BTreeSet")]
+pub struct Set<T : Ord>;
+
+// `[:T:]` spells the type argument as the vector does.
+#[ffi(import)]
+fn new<T>() -> Vec<T> [{ RVec::<[:T:]>::new() }];
+
+#[ffi(import)]
+fn push<T>(v : Vec<T>, x : T) -> Vec<T> [{ v.push(x) }];
+
+#[ffi(import)]
+fn get<T>(v : Vec<T>, i : u64) -> T [{ v.get(i as usize).unwrap() }];
+
+// A clone on the Rust side, then a push onto it: the copy-on-write push
+// clones every element, and the original drops here.
+#[ffi(import)]
+fn duplicate<T>(v : Vec<T>) -> Vec<T> [{ let w = v.clone(); let first = w.get(0).unwrap(); w.push(first) }];
+
+// Returns one argument and drops the others; with four parameters, the
+// arguments come packed in one struct.
+#[ffi(import)]
+fn pick<T>(first : bool, a : T, b : T) -> T [{ if first { a } else { b } }];
+
+#[ffi(import)]
+fn pick3<T>(which : u64, a : T, b : T, c : T) -> T [{ match which { 0 => a, 1 => b, _ => c } }];
+
+// A declared `Nat` is the borrowed raw handle: storing it takes a reference.
+#[ffi(import)]
+fn push_nat(v : Vec<Nat>, n : Nat) -> Vec<Nat> [{ v.push(unsafe { Mpz::from_raw(rcgmp_mpz_retain(n, 0)) }) }];
+
+// A declared `Nat` result hands over one reference as the raw handle.
+#[ffi(import)]
+fn get_nat(v : Vec<Nat>, i : u64) -> Nat [{ v.get(i as usize).unwrap().into_raw() }];
+
+#[ffi(import)]
+fn insert<T : Ord>(s : Set<T>, x : T) -> Set<T> [{ s.insert(x) }];
+
+#[ffi(import)]
+fn set_new<T : Ord>() -> Set<T> [{ RSet::new() }];
+
+#[ffi(import)]
+fn size<T : Ord>(s : Set<T>) -> u64 [{ s.len() as u64 }];
+
+#[ffi(import)]
+fn first<T : Ord>(s : Set<T>) -> T [{ s.first().unwrap() }];
+
+fn nat(x : u64) -> Nat { x as Nat }
+
+fn int(x : i64) -> Int { x as Int }
+
+fn digit(ok : bool) -> i64 { if ok { 1 } else { 0 } }
+
+fn vec_ok(big : Nat) -> bool {
+    let v = push(push(new<Nat>(), big), 7);
+    let w = duplicate(v);
+    get(v, 0) == 1267650600228229401496703205376 && get(v, 1) == 7
+        && get(w, 2) == 1267650600228229401496703205376
+}
+
+fn generic_ok(big : Nat, one : Int) -> bool {
+    let negative = int(0) - (big as Int) * one;
+    pick(true, big, nat(9)) == 1267650600228229401496703205376 && pick(false, big + 2, nat(9)) == 9
+        && pick3(2, big + 2, nat(5), big + 4) == 1267650600228229401496703205380
+        && pick(false, int(4) * one, negative) == -1267650600228229401496703205376
+        && get(push(new<Int>(), negative), 0) == -1267650600228229401496703205376
+}
+
+fn declared_ok(big : Nat) -> bool {
+    let v = push_nat(push_nat(new<Nat>(), big), 11);
+    get_nat(v, 0) == 1267650600228229401496703205376 && get_nat(v, 1) == 11
+}
+
+// Two equal heap values built apart are one element of a Rust set.
+fn set_ok(big : Nat, two : Nat) -> bool {
+    let s = insert(insert(insert(set_new<Nat>(), big), 7), core::intrinsic::bigint::ipowi(two * 2, 50));
+    size(s) == 2 && first(s) == 7
+}
+
+pub fn main(one : u64) -> i64 {
+    let big = core::intrinsic::bigint::ipowi(nat(2 * one), 100);
+    digit(vec_ok(big)) + digit(generic_ok(big, one as Int)) * 10 + digit(declared_ok(big)) * 100
+        + digit(set_ok(big, nat(2 * one))) * 1000
+}
+
+extern "C" trampoline "reussir_main" = main;
+
+// A type argument and a generic instantiated at `Nat` are the owned handle,
+// and their wrappers release nothing after the body.
+// TEXTURE-DAG: RVec::<::reussir_rt::rcgmp::Mpz>::new()
+// TEXTURE-DAG: (r#v: ::reussir_rt::collections::vec::Vec<::reussir_rt::rcgmp::Mpz>, r#x: ::reussir_rt::rcgmp::Mpz) -> ::reussir_rt::collections::vec::Vec<::reussir_rt::rcgmp::Mpz>
+// TEXTURE-DAG: r#a: ::reussir_rt::rcgmp::Mpz, r#b: ::reussir_rt::rcgmp::Mpz) -> ::reussir_rt::rcgmp::Mpz
+// TEXTURE-DAG: ::reussir_rt::collections::btree_set::BTreeSet<::reussir_rt::rcgmp::Mpz>
+// TEXTURE-DAG: struct __ReussirArgs(u64, ::reussir_rt::rcgmp::Mpz, ::reussir_rt::rcgmp::Mpz, ::reussir_rt::rcgmp::Mpz)
+// A declared `Nat` stays the raw handle, which the wrapper releases.
+// TEXTURE-DAG: r#n: *mut ::std::ffi::c_void) -> ::reussir_rt::collections::vec::Vec<::reussir_rt::rcgmp::Mpz>
+// TEXTURE-DAG: rcgmp_mpz_release(r#n, 0)
+// TEXTURE-DAG: r#i: u64) -> *mut ::std::ffi::c_void
+
+// Only `push_nat`'s wrapper releases a handle, and no type argument is raw.
+// ABSENT-NOT: rcgmp_mpz_release(r#{{[^n]}}
+// ABSENT-NOT: Vec<*mut ::std::ffi::c_void>
+// ABSENT-NOT: BTreeSet<*mut ::std::ffi::c_void>

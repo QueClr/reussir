@@ -32,11 +32,16 @@
 //! * shared Reussir records — a generated `#[repr(transparent)]` pointer
 //!   wrapper named by the instance's v0 symbol, whose `Clone`/`Drop` bind to
 //!   compiler-emitted `<sym>_ffi_acquire`/`<sym>_ffi_release` rc glue.
-//! * `Nat` / `Int` — the raw rcgmp handle, `*mut ::std::ffi::c_void`. The
-//!   wrapper owns the argument's reference, as for every boundary type, and
-//!   releases it after the body: the body only borrows the handle and must
-//!   not release it. A returned handle carries one reference, which the
-//!   caller owns.
+//! * `Nat` / `Int` — where the signature spells `Nat` or `Int` itself as a
+//!   parameter or result type, the raw rcgmp handle, `*mut
+//!   ::std::ffi::c_void`. The wrapper owns the argument's reference, as for
+//!   every boundary type, and releases it after the body: the body only
+//!   borrows the handle and must not release it. A returned handle carries
+//!   one reference, which the caller owns. Everywhere else — a type argument
+//!   (`Vec<Nat>`, `[:T:]`), a parameter or result declared as a generic
+//!   instantiated at `Nat` — the owned handle `::reussir_rt::rcgmp::Mpz`,
+//!   whose `Clone`/`Drop` retain and release: the body owns it like any other
+//!   value of the generic, so it may store or return it.
 //!
 //! Symbol scheme (all suffixes appended to complete v0 manglings, which is
 //! injective — no valid v0 symbol is a prefix of another):
@@ -236,6 +241,23 @@ impl<'a, 'tcx> FfiCtx<'a, 'tcx> {
         self.rust_name_with_needs(ty, ComparisonBridgeNeeds::default(), decls)
     }
 
+    /// The Rust spelling of an `#[ffi(import)]` parameter or result type
+    /// `ty`, which the signature declares as `declared`: the raw handle where
+    /// the signature spells `Nat` or `Int` itself (see [`raw_rcgmp_handle`]),
+    /// and [`Self::rust_name`] otherwise, where a generic instantiated at
+    /// `Nat` or `Int` is the owned handle.
+    pub fn boundary_rust_name(
+        &self,
+        declared: Ty<'tcx>,
+        ty: Ty<'tcx>,
+        decls: &mut BTreeMap<String, WrapperDecl<'tcx>>,
+    ) -> Result<String, String> {
+        if raw_rcgmp_handle(declared, ty) {
+            return Ok(RCGMP_HANDLE.into());
+        }
+        self.rust_name(ty, decls)
+    }
+
     /// The Rust spelling of the ground argument one *binder* was instantiated
     /// at, carrying that binder's own declared comparison bounds.
     ///
@@ -305,7 +327,7 @@ impl<'a, 'tcx> FfiCtx<'a, 'tcx> {
             TyKind::Arc(_) => Err("an `Arc` coloring cannot cross the FFI boundary yet".into()),
             TyKind::Nullable(_) => Err("`Nullable` cannot cross the FFI boundary yet".into()),
             TyKind::ConstSeq(_) => Err("a `ConstSeq` cannot cross the FFI boundary yet".into()),
-            TyKind::BigInt(_) => Ok(RCGMP_HANDLE.into()),
+            TyKind::BigInt(_) => Ok(RCGMP_OWNED.into()),
             // `str` lowers to `{ptr, len}`; the runtime's `#[repr(C)]`
             // borrowed view is bit-identical. Every surface `str` today is a
             // `'static` global literal, so the spelled lifetime is sound —
@@ -440,17 +462,33 @@ fn texture_head(preludes: &[&str]) -> String {
     out
 }
 
-/// The Rust spelling of a `Nat` / `Int` crossing the boundary: the raw
-/// rcgmp handle.
+/// The Rust spelling of a `Nat` / `Int` parameter or result the signature
+/// spells itself: the raw rcgmp handle.
 const RCGMP_HANDLE: &str = "*mut ::std::ffi::c_void";
+
+/// The Rust spelling of a `Nat` / `Int` anywhere else: the owned handle,
+/// which retains when cloned and releases when dropped.
+const RCGMP_OWNED: &str = "::reussir_rt::rcgmp::Mpz";
+
+/// Whether an `#[ffi(import)]` parameter or result of type `ty`, declared as
+/// `declared`, crosses as the raw rcgmp handle: the signature spells `Nat` or
+/// `Int` itself. A generic instantiated at `Nat` or `Int` crosses as the
+/// owned handle instead, since the body may store or return its value.
+pub fn raw_rcgmp_handle(declared: Ty<'_>, ty: Ty<'_>) -> bool {
+    matches!(
+        (declared.kind(), ty.kind()),
+        (TyKind::BigInt(_), TyKind::BigInt(_))
+    )
+}
 
 /// One parameter of a generated wrapper: its Rust binding identifier and its
 /// Rust type spelling.
 pub struct WrapperParam {
     pub ident: String,
     pub rust_ty: String,
-    /// The parameter is an rcgmp handle (`Nat` / `Int`): the wrapper owns its
-    /// reference and releases it once the body has run, so the body borrows.
+    /// The parameter is a raw rcgmp handle (declared `Nat` / `Int`, see
+    /// [`raw_rcgmp_handle`]): the wrapper owns its reference and releases
+    /// it once the body has run, so the body borrows.
     pub rcgmp_handle: bool,
 }
 
