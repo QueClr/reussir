@@ -638,13 +638,16 @@ pub fn monomorphize<'a, 'tcx>(input: &MonoInput<'a, 'tcx>) -> (mir::Program<'tcx
                 std::collections::BTreeMap::new();
             let mut wrapper_params = Vec::new();
             let mut ok = true;
-            for p in &params {
+            // Spelled from the declared types too: a `Nat` the signature
+            // names is the borrowed raw handle, a generic instantiated at
+            // `Nat` the owned one (`ffi_render::raw_rcgmp_handle`).
+            for (p, &(_, _, declared)) in params.iter().zip(&func.params) {
                 let name = input.resolver.resolve(p.name).to_owned();
                 let ident = ffi_render::rust_ident(&name);
-                let rust_ty = fctx.rust_name(p.ty, &mut decls);
+                let rust_ty = fctx.boundary_rust_name(declared, p.ty, &mut decls);
                 match (ident, rust_ty) {
                     (Ok(ident), Ok(rust_ty)) => {
-                        let rcgmp_handle = matches!(*p.ty.kind(), TyKind::BigInt(_));
+                        let rcgmp_handle = ffi_render::raw_rcgmp_handle(declared, p.ty);
                         wrapper_params.push(WrapperParam {
                             ident,
                             rust_ty,
@@ -664,7 +667,7 @@ pub fn monomorphize<'a, 'tcx>(input: &MonoInput<'a, 'tcx>) -> (mir::Program<'tcx
             }
             let ret = match *return_ty.kind() {
                 TyKind::Unit => None,
-                _ => match fctx.rust_name(return_ty, &mut decls) {
+                _ => match fctx.boundary_rust_name(func.return_ty, return_ty, &mut decls) {
                     Ok(r) => Some(r),
                     Err(err) => {
                         driver.error(fimport.span, format!("`#[ffi(import)]` return type: {err}"));
