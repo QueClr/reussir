@@ -23,6 +23,7 @@ pub mod panic;
 #[cfg(feature = "pjrt")]
 pub mod pjrt;
 pub mod rc;
+pub mod rcgmp;
 pub mod region;
 pub mod symbols;
 use panic::panic;
